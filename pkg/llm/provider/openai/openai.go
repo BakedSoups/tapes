@@ -3,6 +3,7 @@ package openai
 
 import (
 	"encoding/json"
+	"strings"
 	"time"
 
 	"github.com/papercomputeco/tapes/pkg/llm"
@@ -89,6 +90,10 @@ func (o *Provider) ParseRequest(payload []byte) (*llm.ChatRequest, error) {
 		messages = append(messages, converted)
 	}
 
+	if len(messages) == 0 {
+		messages = parseResponsesInput(req.Input)
+	}
+
 	// Parse stop sequences
 	var stop []string
 	switch s := req.Stop.(type) {
@@ -129,6 +134,118 @@ func (o *Provider) ParseRequest(payload []byte) (*llm.ChatRequest, error) {
 	}
 
 	return result, nil
+}
+
+func parseResponsesInput(input any) []llm.Message {
+	switch value := input.(type) {
+	case string:
+		if value == "" {
+			return nil
+		}
+		return []llm.Message{llm.NewTextMessage("user", value)}
+	case []any:
+		messages := make([]llm.Message, 0, len(value))
+		for _, item := range value {
+			msgMap, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+
+			role, _ := msgMap["role"].(string)
+			if role == "" {
+				role = "user"
+			}
+
+			content := extractResponsesContent(msgMap["content"])
+			if len(content) == 0 {
+				if text := extractResponsesText(msgMap); text != "" {
+					content = []llm.ContentBlock{{Type: "text", Text: text}}
+				}
+			}
+			if len(content) == 0 {
+				continue
+			}
+
+			messages = append(messages, llm.Message{
+				Role:    role,
+				Content: content,
+			})
+		}
+		return messages
+	default:
+		return nil
+	}
+}
+
+func extractResponsesContent(content any) []llm.ContentBlock {
+	switch value := content.(type) {
+	case string:
+		if value == "" {
+			return nil
+		}
+		return []llm.ContentBlock{{Type: "text", Text: value}}
+	case []any:
+		blocks := make([]llm.ContentBlock, 0, len(value))
+		for _, item := range value {
+			part, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+
+			partType, _ := part["type"].(string)
+			switch partType {
+			case "input_text", "output_text", "text":
+				text, _ := part["text"].(string)
+				if text != "" {
+					blocks = append(blocks, llm.ContentBlock{Type: "text", Text: text})
+				}
+			case "input_image", "image":
+				block := llm.ContentBlock{Type: "image"}
+				switch image := part["image_url"].(type) {
+				case string:
+					block.ImageURL = image
+				case map[string]any:
+					if url, ok := image["url"].(string); ok {
+						block.ImageURL = url
+					}
+				}
+				if block.ImageURL != "" {
+					blocks = append(blocks, block)
+				}
+			}
+		}
+		return blocks
+	default:
+		return nil
+	}
+}
+
+func extractResponsesText(value any) string {
+	switch typed := value.(type) {
+	case string:
+		return typed
+	case map[string]any:
+		if text, ok := typed["text"].(string); ok && text != "" {
+			return text
+		}
+		if inputText, ok := typed["input_text"].(string); ok && inputText != "" {
+			return inputText
+		}
+		var builder strings.Builder
+		if content, ok := typed["content"]; ok {
+			for _, block := range extractResponsesContent(content) {
+				if block.Type == "text" && block.Text != "" {
+					if builder.Len() > 0 {
+						builder.WriteString("\n")
+					}
+					builder.WriteString(block.Text)
+				}
+			}
+		}
+		return builder.String()
+	default:
+		return ""
+	}
 }
 
 func (o *Provider) ParseResponse(payload []byte) (*llm.ChatResponse, error) {

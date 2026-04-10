@@ -4,6 +4,7 @@ package openai
 type openaiRequest struct {
 	Model       string          `json:"model"`
 	Messages    []openaiMessage `json:"messages"`
+	Input       any             `json:"input,omitempty"`
 	MaxTokens   *int            `json:"max_tokens,omitempty"`
 	Temperature *float64        `json:"temperature,omitempty"`
 	TopP        *float64        `json:"top_p,omitempty"`
