@@ -721,9 +721,7 @@
     function stemGroupKey(s) {
       return [
         s.project || '',
-        s.agent_name || s.harness_id || '',
-        s.label || '',
-        s.start_time || ''
+        s.agent_name || s.harness_id || ''
       ].join('\u001f');
     }
 
@@ -732,9 +730,7 @@
       items.forEach(function (item) {
         var key = stemGroupKey({
           project: item.project || item.cwd,
-          agent_name: item.agent_name || item.harness_id,
-          label: item.name || item.preview,
-          start_time: item.started_at
+          agent_name: item.agent_name || item.harness_id
         });
         var current = groups.get(key);
         if (!current) {
