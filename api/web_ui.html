@@ -280,6 +280,44 @@
     .chat-text {
       max-width: 860px;
     }
+    .used-tools {
+      border: 1px solid rgba(242, 189, 92, .32);
+      border-radius: 8px;
+      background: rgba(242, 189, 92, .045);
+      overflow: hidden;
+    }
+    .used-tools summary {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 8px 10px;
+      cursor: pointer;
+      list-style: none;
+    }
+    .used-tools summary::-webkit-details-marker { display: none; }
+    .used-tools-title {
+      display: inline-flex;
+      align-items: center;
+      min-width: 0;
+      gap: 8px;
+      font-weight: 750;
+    }
+    .used-tools-title span:last-child {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .used-tools-meta {
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+    .used-tools-list {
+      display: grid;
+      gap: 7px;
+      padding: 0 10px 10px;
+    }
     .tool-message {
       display: flex;
       align-items: center;
@@ -884,10 +922,67 @@
       );
     }
 
+    function isToolBlock(block) {
+      return block && (block.type === 'tool_use' || block.type === 'server_tool_use' || block.type === 'tool_result');
+    }
+
+    function ToolEvent(props) {
+      var block = props.block || {};
+      if (block.type === 'tool_result') {
+        var output = block.tool_output || block.text || block.content || '';
+        var outputTokens = approxTokens(output);
+        return e(ToolMessage, {
+          kind: block.is_error ? 'error' : 'result',
+          title: block.is_error ? 'Tool returned error' : 'Tool returned',
+          tokens: 'output ~' + compact(outputTokens) + ' tokens',
+          detail: output || '(empty tool result)',
+          icon: block.is_error ? '!' : '✓'
+        });
+      }
+
+      var toolInput = block.tool_input || {};
+      var inputTokens = approxTokens(toolInput);
+      return e(ToolMessage, {
+        title: 'Called ' + (block.tool_name || block.name || 'tool'),
+        tokens: 'input ~' + compact(inputTokens) + ' tokens',
+        detail: '```json\n' + JSON.stringify(toolInput, null, 2) + '\n```',
+        icon: '↗'
+      });
+    }
+
+    function UsedTools(props) {
+      var blocks = props.blocks || [];
+      if (!blocks.length) return null;
+      var calls = blocks.filter(function (block) {
+        return block.type === 'tool_use' || block.type === 'server_tool_use';
+      });
+      var results = blocks.filter(function (block) { return block.type === 'tool_result'; });
+      var names = calls.map(function (block) {
+        return block.tool_name || block.name || 'tool';
+      });
+      var title = names.length
+        ? names.slice(0, 3).join(', ') + (names.length > 3 ? ' +' + (names.length - 3) : '')
+        : 'Tool results';
+      return e('details', { className: 'used-tools' },
+        e('summary', null,
+          e('span', { className: 'used-tools-title' },
+            e('span', { className: 'event-icon' }, '⌘'),
+            e('span', null, 'Used tools: ' + title)
+          ),
+          e('span', { className: 'used-tools-meta' }, calls.length + ' calls · ' + results.length + ' results')
+        ),
+        e('div', { className: 'used-tools-list' },
+          blocks.map(function (block, i) { return e(ToolEvent, { key: i, block: block }); })
+        )
+      );
+    }
+
     function renderContentBlocks(blocks) {
       blocks = blocks || [];
       if (!blocks.length) return [e('div', { key: 'empty', className: 'message-body markdown' }, e('p', { className: 'muted' }, '(no content blocks)'))];
-      return blocks.map(function (block, i) {
+      var visibleBlocks = blocks.filter(function (block) { return !isToolBlock(block); });
+      if (!visibleBlocks.length) return [e('div', { key: 'empty', className: 'message-body markdown' }, e('p', { className: 'muted' }, '(no text content)'))];
+      return visibleBlocks.map(function (block, i) {
         var text = block.text || '';
         if (looksLikeContext(text)) {
           return e('div', { key: i },
@@ -899,29 +994,6 @@
             e('div', { className: 'block-label' }, e('span', { className: 'event-icon' }, '…'), 'Agent thought'),
             e(Markdown, { text: block.thinking || block.text || '' })
           );
-        }
-        if (block.type === 'tool_use' || block.type === 'server_tool_use') {
-          var toolInput = block.tool_input || {};
-          var inputTokens = approxTokens(toolInput);
-          return e(ToolMessage, {
-            key: i,
-            title: 'Called ' + (block.tool_name || 'tool'),
-            tokens: 'input ~' + compact(inputTokens) + ' tokens',
-            detail: '```json\n' + JSON.stringify(toolInput, null, 2) + '\n```',
-            icon: '↗'
-          });
-        }
-        if (block.type === 'tool_result') {
-          var output = block.tool_output || block.text || block.content || '';
-          var outputTokens = approxTokens(output);
-          return e(ToolMessage, {
-            key: i,
-            kind: block.is_error ? 'error' : 'result',
-            title: block.is_error ? 'Tool returned error' : 'Tool returned',
-            tokens: 'output ~' + compact(outputTokens) + ' tokens',
-            detail: output || '(empty tool result)',
-            icon: block.is_error ? '!' : '✓'
-          });
         }
         return e('div', { key: i, className: 'message-body chat-text' }, e(Markdown, { text: block.text || block.tool_output || block.content || '' }));
       });
@@ -1217,6 +1289,7 @@
     function Turn(props) {
       var t = props.turn;
       var usage = t.usage || {};
+      var toolBlocks = (t.content || []).filter(isToolBlock);
       return e('article', { className: 'turn ' + (t.role || 'unknown') },
         e('div', { className: 'turn-avatar' }, roleInitial(t.role)),
         e('div', { className: 'turn-bubble' },
@@ -1232,7 +1305,8 @@
             )
           ),
           e('div', { className: 'message-stack' },
-            renderContentBlocks(t.content)
+            renderContentBlocks(t.content),
+            e(UsedTools, { blocks: toolBlocks })
           )
         )
       );
