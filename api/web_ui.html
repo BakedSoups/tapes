@@ -204,7 +204,7 @@
     }
     .turns {
       display: grid;
-      gap: 14px;
+      gap: 10px;
       position: relative;
     }
     .turns::before {
@@ -219,7 +219,7 @@
     .turn {
       display: grid;
       grid-template-columns: 40px minmax(0, 1fr);
-      gap: 12px;
+      gap: 10px;
       border: 0;
       background: transparent;
       padding: 0;
@@ -227,14 +227,15 @@
     .turn-avatar {
       position: relative;
       z-index: 1;
-      width: 38px;
-      height: 38px;
+      width: 34px;
+      height: 34px;
       display: grid;
       place-items: center;
       border: 1px solid var(--line);
       border-radius: 999px;
       background: #111318;
       color: var(--muted);
+      font-size: 12px;
       font-weight: 800;
       text-transform: uppercase;
     }
@@ -245,7 +246,7 @@
       min-width: 0;
       border: 1px solid var(--line);
       border-radius: 8px;
-      background: linear-gradient(180deg, rgba(255,255,255,.024), rgba(255,255,255,0)), var(--panel);
+      background: #1c1f25;
       overflow: hidden;
     }
     .turn.assistant .turn-bubble { border-color: rgba(94, 200, 167, .35); }
@@ -255,9 +256,9 @@
       display: flex;
       justify-content: space-between;
       gap: 12px;
-      padding: 11px 12px;
+      padding: 10px 12px;
       border-bottom: 1px solid var(--line);
-      background: rgba(255,255,255,.018);
+      background: rgba(255,255,255,.014);
     }
     .turn-role {
       display: inline-flex;
@@ -268,22 +269,34 @@
     }
     .message-stack {
       display: grid;
-      gap: 10px;
+      gap: 9px;
       padding: 12px;
     }
     .message-body {
       color: #d7dbe2;
       overflow-wrap: anywhere;
-      max-height: 360px;
-      overflow: auto;
+      overflow: visible;
     }
     .chat-text {
       max-width: 860px;
     }
+    .turn.user .chat-text,
+    .turn.assistant .chat-text {
+      max-width: 980px;
+    }
+    .tool-group-turn .turn-avatar {
+      color: var(--warn);
+      border-color: rgba(242, 189, 92, .40);
+      background: rgba(242, 189, 92, .08);
+    }
+    .tool-group-turn .turn-bubble {
+      border-color: rgba(242, 189, 92, .28);
+      background: rgba(242, 189, 92, .035);
+    }
     .used-tools {
-      border: 1px solid rgba(242, 189, 92, .32);
+      border: 1px solid rgba(242, 189, 92, .26);
       border-radius: 8px;
-      background: rgba(242, 189, 92, .045);
+      background: rgba(242, 189, 92, .035);
       overflow: hidden;
     }
     .used-tools summary {
@@ -291,7 +304,7 @@
       align-items: center;
       justify-content: space-between;
       gap: 12px;
-      padding: 8px 10px;
+      padding: 9px 11px;
       cursor: pointer;
       list-style: none;
     }
@@ -301,6 +314,7 @@
       align-items: center;
       min-width: 0;
       gap: 8px;
+      color: #f4d08a;
       font-weight: 750;
     }
     .used-tools-title span:last-child {
@@ -323,18 +337,18 @@
       align-items: center;
       justify-content: space-between;
       gap: 12px;
-      border: 1px solid rgba(242, 189, 92, .34);
+      border: 1px solid rgba(242, 189, 92, .20);
       border-radius: 8px;
-      padding: 8px 10px;
-      background: rgba(242, 189, 92, .055);
+      padding: 7px 9px;
+      background: rgba(10, 12, 16, .38);
     }
     .tool-message.result {
-      border-color: rgba(122, 167, 255, .30);
-      background: rgba(122, 167, 255, .045);
+      border-color: rgba(122, 167, 255, .20);
+      background: rgba(10, 12, 16, .30);
     }
     .tool-message.error {
-      border-color: rgba(248, 113, 113, .44);
-      background: rgba(248, 113, 113, .055);
+      border-color: rgba(248, 113, 113, .34);
+      background: rgba(248, 113, 113, .045);
     }
     .tool-message-main {
       display: inline-flex;
@@ -644,6 +658,10 @@
       return Number(s.total_input_tokens || 0) + Number(s.total_output_tokens || 0);
     }
 
+    function isUUID(value) {
+      return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(value || ''));
+    }
+
     function normalizeProductSession(s) {
       s._source = 'session';
       return s;
@@ -926,6 +944,36 @@
       return block && (block.type === 'tool_use' || block.type === 'server_tool_use' || block.type === 'tool_result');
     }
 
+    function hasBlockText(block) {
+      if (!block) return false;
+      return Boolean(String(block.text || block.thinking || block.tool_output || block.content || '').trim());
+    }
+
+    function isVisibleBlock(block) {
+      if (!block || isToolBlock(block)) return false;
+      if (block.type === 'thinking' || block.thinking) return hasBlockText(block);
+      return hasBlockText(block) || looksLikeContext(block.text || '');
+    }
+
+    function visibleContentBlocks(blocks) {
+      return (blocks || []).filter(isVisibleBlock);
+    }
+
+    function toolBlockTokens(block) {
+      if (!block) return 0;
+      if (block.type === 'tool_result') return approxTokens(block.tool_output || block.text || block.content || '');
+      return approxTokens(block.tool_input || {});
+    }
+
+    function toolStats(blocks) {
+      return (blocks || []).reduce(function (acc, block) {
+        if (block.type === 'tool_use' || block.type === 'server_tool_use') acc.calls += 1;
+        if (block.type === 'tool_result') acc.results += 1;
+        acc.tokens += toolBlockTokens(block);
+        return acc;
+      }, { calls: 0, results: 0, tokens: 0 });
+    }
+
     function ToolEvent(props) {
       var block = props.block || {};
       if (block.type === 'tool_result') {
@@ -953,10 +1001,10 @@
     function UsedTools(props) {
       var blocks = props.blocks || [];
       if (!blocks.length) return null;
+      var stats = toolStats(blocks);
       var calls = blocks.filter(function (block) {
         return block.type === 'tool_use' || block.type === 'server_tool_use';
       });
-      var results = blocks.filter(function (block) { return block.type === 'tool_result'; });
       var names = calls.map(function (block) {
         return block.tool_name || block.name || 'tool';
       });
@@ -969,7 +1017,7 @@
             e('span', { className: 'event-icon' }, '⌘'),
             e('span', null, 'Used tools: ' + title)
           ),
-          e('span', { className: 'used-tools-meta' }, calls.length + ' calls · ' + results.length + ' results')
+          e('span', { className: 'used-tools-meta' }, stats.calls + ' calls · ' + stats.results + ' results · ~' + compact(stats.tokens) + ' tokens')
         ),
         e('div', { className: 'used-tools-list' },
           blocks.map(function (block, i) { return e(ToolEvent, { key: i, block: block }); })
@@ -980,8 +1028,8 @@
     function renderContentBlocks(blocks) {
       blocks = blocks || [];
       if (!blocks.length) return [e('div', { key: 'empty', className: 'message-body markdown' }, e('p', { className: 'muted' }, '(no content blocks)'))];
-      var visibleBlocks = blocks.filter(function (block) { return !isToolBlock(block); });
-      if (!visibleBlocks.length) return [e('div', { key: 'empty', className: 'message-body markdown' }, e('p', { className: 'muted' }, '(no text content)'))];
+      var visibleBlocks = visibleContentBlocks(blocks);
+      if (!visibleBlocks.length) return [];
       return visibleBlocks.map(function (block, i) {
         var text = block.text || '';
         if (looksLikeContext(text)) {
@@ -1018,6 +1066,52 @@
         });
         return acc;
       }, { input: 0, output: 0, toolCount: 0, tools: {} });
+    }
+
+    function groupTranscriptTurns(turns) {
+      var entries = [];
+      var pendingTools = null;
+
+      function flushTools() {
+        if (!pendingTools || !pendingTools.blocks.length) return;
+        entries.push(pendingTools);
+        pendingTools = null;
+      }
+
+      (turns || []).forEach(function (turn) {
+        var blocks = turn.content || [];
+        var toolBlocks = blocks.filter(isToolBlock);
+        var textBlocks = visibleContentBlocks(blocks);
+        var hasText = textBlocks.length > 0;
+
+        if (!hasText && !toolBlocks.length) return;
+
+        if (!hasText && toolBlocks.length) {
+          if (!pendingTools) {
+            pendingTools = {
+              type: 'tools',
+              key: 'tools-' + (turn.hash || entries.length),
+              role: 'tool',
+              started_at: turn.created_at,
+              ended_at: turn.created_at,
+              model: turn.model,
+              blocks: [],
+              turns: []
+            };
+          }
+          pendingTools.blocks = pendingTools.blocks.concat(toolBlocks);
+          pendingTools.turns.push(turn);
+          pendingTools.ended_at = turn.created_at || pendingTools.ended_at;
+          if (!pendingTools.model && turn.model) pendingTools.model = turn.model;
+          return;
+        }
+
+        flushTools();
+        entries.push({ type: 'turn', key: turn.hash, turn: turn, toolBlocks: toolBlocks });
+      });
+
+      flushTools();
+      return entries;
     }
 
     function Dashboard() {
@@ -1076,12 +1170,12 @@
         setDetailLoading(true);
         setError('');
         var selected = sessions.find(function (s) { return s.id === selectedID; });
-        var isStem = selected && selected._source === 'stem';
+        var isStem = (selected && selected._source === 'stem') || !isUUID(selectedID);
         var path = isStem
           ? '/v1/stems/' + encodeURIComponent(selectedID)
           : '/v1/sessions/' + encodeURIComponent(selectedID) + '?stem=all';
         json(path).then(function (data) {
-          setDetail(isStem ? normalizeStemDetail(selected, data) : data);
+          setDetail(isStem ? normalizeStemDetail(selected || normalizeStemSession(data.summary || { id: selectedID }), data) : data);
           history.replaceState(null, '', '/?session=' + encodeURIComponent(selectedID));
         }).catch(function (err) {
           setError(err.message);
@@ -1259,6 +1353,7 @@
       if (!props.detail) return e('div', { className: 'detail' }, e('div', { className: 'detail-empty' }, 'Select a session to see turns, tools, tokens, and cost.'));
       var s = props.detail.session;
       var turns = props.detail.turns || [];
+      var transcript = groupTranscriptTurns(turns);
       var turnTotals = totalsFromTurns(turns);
       var tools = Object.keys(turnTotals.tools).sort(function (a, b) { return turnTotals.tools[b] - turnTotals.tools[a]; });
       return e('div', { className: 'detail' },
@@ -1282,14 +1377,30 @@
             }) : e('span', { className: 'muted' }, 'No tool calls recorded for this session.')
           )
         ),
-        e('div', { className: 'turns' }, turns.map(function (turn) { return e(Turn, { key: turn.hash, turn: turn }); }))
+        e('div', { className: 'turns' }, transcript.map(function (entry) {
+          return entry.type === 'tools'
+            ? e(ToolGroupTurn, { key: entry.key, entry: entry })
+            : e(Turn, { key: entry.key, turn: entry.turn, toolBlocks: entry.toolBlocks });
+        }))
+      );
+    }
+
+    function ToolGroupTurn(props) {
+      var entry = props.entry;
+      return e('article', { className: 'turn tool-group-turn' },
+        e('div', { className: 'turn-avatar' }, 'T'),
+        e('div', { className: 'turn-bubble' },
+          e('div', { className: 'message-stack' },
+            e(UsedTools, { blocks: entry.blocks })
+          )
+        )
       );
     }
 
     function Turn(props) {
       var t = props.turn;
       var usage = t.usage || {};
-      var toolBlocks = (t.content || []).filter(isToolBlock);
+      var toolBlocks = props.toolBlocks || (t.content || []).filter(isToolBlock);
       return e('article', { className: 'turn ' + (t.role || 'unknown') },
         e('div', { className: 'turn-avatar' }, roleInitial(t.role)),
         e('div', { className: 'turn-bubble' },
