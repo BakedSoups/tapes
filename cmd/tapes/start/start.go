@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -19,6 +20,7 @@ import (
 	"time"
 
 	"github.com/fsnotify/fsnotify"
+	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 
 	"github.com/papercomputeco/tapes/api"
@@ -57,6 +59,7 @@ Examples:
 
 	codexAuthModeAPIKey = "api-key"
 	codexAuthModeOAuth  = "oauth"
+	codexSessionIDEnv   = "TAPES_CODEX_SESSION_ID"
 )
 
 type startCommander struct {
@@ -248,6 +251,17 @@ func (c *startCommander) runAgent(ctx context.Context, agent string, passthrough
 
 	proxyURL := strings.TrimRight(state.ProxyURL, "/")
 	agentBaseURL := fmt.Sprintf("%s/agents/%s", proxyURL, agent)
+	if agent == agentCodex {
+		agentProject := strings.TrimSpace(c.project)
+		if agentProject == "" {
+			agentProject = git.RepoName(ctx)
+		}
+		sessionID := strings.TrimSpace(os.Getenv(codexSessionIDEnv))
+		if sessionID == "" {
+			sessionID = uuid.NewString()
+		}
+		agentBaseURL = codexAgentBaseURL(proxyURL, sessionID, agentProject)
+	}
 
 	// Resolve opencode provider/model before building the command,
 	// since we need to pass --model as a CLI argument.
@@ -356,6 +370,18 @@ func codexProxyArgs(agentBaseURL string) []string {
 		"-c", "model_providers.tapes.requires_openai_auth=true",
 		"-c", "model_providers.tapes.supports_websockets=false",
 	}
+}
+
+func codexAgentBaseURL(proxyURL, sessionID, project string) string {
+	if strings.TrimSpace(project) == "" {
+		project = "unknown"
+	}
+	return fmt.Sprintf("%s/agents/%s/sessions/%s/projects/%s",
+		strings.TrimRight(proxyURL, "/"),
+		agentCodex,
+		url.PathEscape(sessionID),
+		url.PathEscape(project),
+	)
 }
 
 func (c *startCommander) runForeground(ctx context.Context) error {

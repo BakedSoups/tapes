@@ -351,6 +351,31 @@ var _ = Describe("Non-Streaming Proxy", func() {
 	})
 })
 
+var _ = Describe("agent request routing", func() {
+	It("strips Codex session metadata before forwarding to the provider", func() {
+		route := (&Proxy{}).resolveAgent("/agents/codex/sessions/session-1/projects/non%20grampictures/responses", "")
+
+		Expect(route.AgentName).To(Equal("codex"))
+		Expect(route.ProviderName).To(BeEmpty())
+		Expect(route.Path).To(Equal("/responses"))
+		Expect(route.Project).To(Equal("non grampictures"))
+		Expect(route.Session).NotTo(BeNil())
+		Expect(route.Session.AuthSubject).To(Equal("local"))
+		Expect(route.Session.HarnessID).To(Equal("codex"))
+		Expect(route.Session.HarnessSessionID).To(Equal("session-1"))
+		Expect(route.Session.Name).To(Equal("non grampictures"))
+	})
+
+	It("preserves provider overrides after Codex session metadata", func() {
+		route := (&Proxy{}).resolveAgent("/agents/codex/sessions/session-1/projects/tapes/providers/openai/responses", "")
+
+		Expect(route.AgentName).To(Equal("codex"))
+		Expect(route.ProviderName).To(Equal("openai"))
+		Expect(route.Path).To(Equal("/responses"))
+		Expect(route.Project).To(Equal("tapes"))
+	})
+})
+
 var _ = Describe("Streaming Proxy", func() {
 	var (
 		p        *Proxy

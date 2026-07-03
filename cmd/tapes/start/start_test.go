@@ -336,6 +336,12 @@ var _ = Describe("parseStartArgs", func() {
 })
 
 var _ = Describe("codexProxyArgs", func() {
+	It("builds a Codex agent URL with session metadata", func() {
+		Expect(codexAgentBaseURL("http://127.0.0.1:34015/", "session 1", "my repo")).To(Equal(
+			"http://127.0.0.1:34015/agents/codex/sessions/session%201/projects/my%20repo",
+		))
+	})
+
 	It("points a Codex Responses provider at the agent proxy", func() {
 		args := codexProxyArgs("http://127.0.0.1:34015/agents/codex")
 		Expect(args).To(Equal([]string{

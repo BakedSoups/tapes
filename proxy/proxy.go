@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -21,6 +22,7 @@ import (
 	"github.com/papercomputeco/tapes/pkg/capture"
 	"github.com/papercomputeco/tapes/pkg/llm"
 	"github.com/papercomputeco/tapes/pkg/llm/provider"
+	"github.com/papercomputeco/tapes/pkg/sessions"
 	"github.com/papercomputeco/tapes/pkg/sse"
 	"github.com/papercomputeco/tapes/pkg/storage"
 	"github.com/papercomputeco/tapes/proxy/header"
@@ -48,6 +50,14 @@ type Proxy struct {
 	defaultProv   provider.Provider
 	headerHandler *header.Handler
 	reducers      map[string]capture.Reducer
+}
+
+type agentRequestRoute struct {
+	AgentName    string
+	ProviderName string
+	Path         string
+	Project      string
+	Session      *sessions.IngestEnvelope
 }
 
 // New creates a new Proxy.
@@ -157,8 +167,8 @@ func (p *Proxy) handleProxy(c *fiber.Ctx) error {
 	startTime := time.Now()
 
 	// Get the request path and method
-	agentName, providerName, path := p.resolveAgent(c.Path(), c.Get(header.AgentNameHeader))
-	prov, upstreamURL := p.resolveProvider(agentName, providerName, path)
+	route := p.resolveAgent(c.Path(), c.Get(header.AgentNameHeader))
+	prov, upstreamURL := p.resolveProvider(route.AgentName, route.ProviderName, route.Path)
 	method := c.Method()
 
 	// Only process POST requests that look like chat/completion endpoints
@@ -174,12 +184,12 @@ func (p *Proxy) handleProxy(c *fiber.Ctx) error {
 			p.logger.Warn("failed to parse request",
 				"error", err,
 				"provider", prov.Name(),
-				"agent", agentName,
+				"agent", route.AgentName,
 			)
 		} else {
 			p.logger.Debug("parsed request",
 				"provider", prov.Name(),
-				"agent", agentName,
+				"agent", route.AgentName,
 				"model", parsedReq.Model,
 				"message_count", len(parsedReq.Messages),
 			)
@@ -205,16 +215,16 @@ func (p *Proxy) handleProxy(c *fiber.Ctx) error {
 	}
 
 	if streaming && isChatRequest {
-		return p.handleStreamingProxy(c, path, upstreamURL, prov, agentName, body, parsedReq, startTime)
+		return p.handleStreamingProxy(c, route, upstreamURL, prov, body, parsedReq, startTime)
 	}
 
-	return p.handleNonStreamingProxy(c, path, method, upstreamURL, prov, agentName, body, parsedReq, startTime)
+	return p.handleNonStreamingProxy(c, route, method, upstreamURL, prov, body, parsedReq, startTime)
 }
 
 // handleNonStreamingProxy handles non-streaming requests.
-func (p *Proxy) handleNonStreamingProxy(c *fiber.Ctx, path, method, upstreamURL string, prov provider.Provider, agentName string, body []byte, parsedReq *llm.ChatRequest, startTime time.Time) error {
+func (p *Proxy) handleNonStreamingProxy(c *fiber.Ctx, route agentRequestRoute, method, upstreamURL string, prov provider.Provider, body []byte, parsedReq *llm.ChatRequest, startTime time.Time) error {
 	// Build upstream URL
-	upstreamURL += path
+	upstreamURL += route.Path
 
 	// Create upstream request
 	var reqBody io.Reader
@@ -259,25 +269,20 @@ func (p *Proxy) handleNonStreamingProxy(c *fiber.Ctx, path, method, upstreamURL 
 			p.logger.Warn("failed to parse response",
 				"error", err,
 				"provider", prov.Name(),
-				"agent", agentName,
+				"agent", route.AgentName,
 			)
 		} else {
 			p.logger.Debug("received response from upstream",
 				"model", parsedResp.Model,
 				"provider", prov.Name(),
-				"agent", agentName,
+				"agent", route.AgentName,
 				"duration", time.Since(startTime),
 			)
 
 			stampDuration(parsedResp, startTime)
 
 			// Non-blocking enqueue for async storage
-			p.workerPool.Enqueue(worker.Job{
-				Provider:  prov.Name(),
-				AgentName: agentName,
-				Req:       parsedReq,
-				Resp:      parsedResp,
-			})
+			p.workerPool.Enqueue(p.workerJob(prov, route, parsedReq, parsedResp))
 		}
 	}
 
@@ -286,9 +291,9 @@ func (p *Proxy) handleNonStreamingProxy(c *fiber.Ctx, path, method, upstreamURL 
 }
 
 // handleStreamingProxy handles streaming requests.
-func (p *Proxy) handleStreamingProxy(c *fiber.Ctx, path, upstreamURL string, prov provider.Provider, agentName string, body []byte, parsedReq *llm.ChatRequest, startTime time.Time) error {
+func (p *Proxy) handleStreamingProxy(c *fiber.Ctx, route agentRequestRoute, upstreamURL string, prov provider.Provider, body []byte, parsedReq *llm.ChatRequest, startTime time.Time) error {
 	// Build upstream URL
-	upstreamURL += path
+	upstreamURL += route.Path
 
 	// Use context.Background() instead of c.Context() because fasthttp recycles
 	// its RequestCtx after the handler returns, but the streaming callback runs
@@ -335,7 +340,7 @@ func (p *Proxy) handleStreamingProxy(c *fiber.Ctx, path, upstreamURL string, pro
 	// every chunk. This gives direct backpressure and true per-chunk streaming
 	// for LLM based.
 	pr, pw := io.Pipe()
-	go p.handleHTTPRespToPipeWriter(httpResp, pw, parsedReq, prov, agentName, startTime)
+	go p.handleHTTPRespToPipeWriter(httpResp, pw, parsedReq, prov, route, startTime)
 
 	// Set the pipe reader as the body stream with unknown size (-1),
 	// which triggers chunked transfer encoding in fasthttp.
@@ -344,18 +349,18 @@ func (p *Proxy) handleStreamingProxy(c *fiber.Ctx, path, upstreamURL string, pro
 	return nil
 }
 
-func (p *Proxy) handleHTTPRespToPipeWriter(httpResp *http.Response, pw *io.PipeWriter, parsedReq *llm.ChatRequest, prov provider.Provider, agentName string, startTime time.Time) {
+func (p *Proxy) handleHTTPRespToPipeWriter(httpResp *http.Response, pw *io.PipeWriter, parsedReq *llm.ChatRequest, prov provider.Provider, route agentRequestRoute, startTime time.Time) {
 	// Close the upstream response body once streaming is complete.
 	defer httpResp.Body.Close()
 	defer pw.Close()
 
 	switch ct := httpResp.Header.Get("Content-Type"); {
 	case isOpenAIResponsesEndpoint(parsedReq):
-		p.handleSSEStream(httpResp, pw, parsedReq, prov, agentName, startTime)
+		p.handleSSEStream(httpResp, pw, parsedReq, prov, route, startTime)
 	case strings.HasPrefix(ct, "text/event-stream"):
-		p.handleSSEStream(httpResp, pw, parsedReq, prov, agentName, startTime)
+		p.handleSSEStream(httpResp, pw, parsedReq, prov, route, startTime)
 	default:
-		p.handleNDJSONStream(httpResp, pw, parsedReq, prov, agentName, startTime)
+		p.handleNDJSONStream(httpResp, pw, parsedReq, prov, route, startTime)
 	}
 }
 
@@ -366,16 +371,16 @@ func (p *Proxy) handleHTTPRespToPipeWriter(httpResp *http.Response, pw *io.PipeW
 // Providers with a reducer in p.reducers go through capture for a canonical
 // reduction; everything else falls back to the in-proxy extraction helpers
 // until it migrates into the shared library.
-func (p *Proxy) handleSSEStream(httpResp *http.Response, pw *io.PipeWriter, parsedReq *llm.ChatRequest, prov provider.Provider, agentName string, startTime time.Time) {
+func (p *Proxy) handleSSEStream(httpResp *http.Response, pw *io.PipeWriter, parsedReq *llm.ChatRequest, prov provider.Provider, route agentRequestRoute, startTime time.Time) {
 	if r := responseReducerForRequest(parsedReq, prov); r != nil {
-		p.handleSSEStreamViaCapture(r, httpResp, pw, parsedReq, prov, agentName, startTime)
+		p.handleSSEStreamViaCapture(r, httpResp, pw, parsedReq, prov, route, startTime)
 		return
 	}
 	if r, ok := p.reducers[prov.Name()]; ok {
-		p.handleSSEStreamViaCapture(r, httpResp, pw, parsedReq, prov, agentName, startTime)
+		p.handleSSEStreamViaCapture(r, httpResp, pw, parsedReq, prov, route, startTime)
 		return
 	}
-	p.handleSSEStreamLegacy(httpResp, pw, parsedReq, prov, agentName, startTime)
+	p.handleSSEStreamLegacy(httpResp, pw, parsedReq, prov, route, startTime)
 }
 
 func (p *Proxy) parseNonStreamingResponse(respBody []byte, contentType string, parsedReq *llm.ChatRequest, prov provider.Provider) (*llm.ChatResponse, error) {
@@ -407,7 +412,7 @@ func isOpenAIResponsesEndpoint(parsedReq *llm.ChatRequest) bool {
 // the reducer for event parsing. We stream directly into Reduce rather
 // than materializing the full body into an intermediate []byte — on a
 // large response that would double the resident memory for no gain.
-func (p *Proxy) handleSSEStreamViaCapture(r capture.Reducer, httpResp *http.Response, pw *io.PipeWriter, parsedReq *llm.ChatRequest, prov provider.Provider, agentName string, startTime time.Time) {
+func (p *Proxy) handleSSEStreamViaCapture(r capture.Reducer, httpResp *http.Response, pw *io.PipeWriter, parsedReq *llm.ChatRequest, prov provider.Provider, route agentRequestRoute, startTime time.Time) {
 	reader := io.TeeReader(httpResp.Body, pw)
 
 	resp, err := r.Reduce(
@@ -420,7 +425,7 @@ func (p *Proxy) handleSSEStreamViaCapture(r capture.Reducer, httpResp *http.Resp
 		p.logger.Error("capture reduce failed",
 			"error", err,
 			"provider", prov.Name(),
-			"agent", agentName,
+			"agent", route.AgentName,
 		)
 		return
 	}
@@ -437,24 +442,19 @@ func (p *Proxy) handleSSEStreamViaCapture(r capture.Reducer, httpResp *http.Resp
 
 	p.logger.Debug("streaming complete",
 		"provider", prov.Name(),
-		"agent", agentName,
+		"agent", route.AgentName,
 		"model", resp.Model,
 		"duration", time.Since(startTime),
 	)
 
 	stampDuration(resp, startTime)
 
-	p.workerPool.Enqueue(worker.Job{
-		Provider:  prov.Name(),
-		AgentName: agentName,
-		Req:       parsedReq,
-		Resp:      resp,
-	})
+	p.workerPool.Enqueue(p.workerJob(prov, route, parsedReq, resp))
 }
 
 // handleSSEStreamLegacy preserves the pre-capture path for providers that
 // have not yet migrated into pkg/capture.
-func (p *Proxy) handleSSEStreamLegacy(httpResp *http.Response, pw *io.PipeWriter, parsedReq *llm.ChatRequest, prov provider.Provider, agentName string, startTime time.Time) {
+func (p *Proxy) handleSSEStreamLegacy(httpResp *http.Response, pw *io.PipeWriter, parsedReq *llm.ChatRequest, prov provider.Provider, route agentRequestRoute, startTime time.Time) {
 	var allChunks [][]byte
 	var fullContent strings.Builder
 	var streamUsage llm.Usage
@@ -488,13 +488,13 @@ func (p *Proxy) handleSSEStreamLegacy(httpResp *http.Response, pw *io.PipeWriter
 		p.extractUsageFromSSE([]byte(ev.Data), prov.Name(), &streamUsage, &meta)
 	}
 
-	p.enqueueStreamedResponse(allChunks, fullContent.String(), &streamUsage, &meta, parsedReq, prov, agentName, startTime)
+	p.enqueueStreamedResponse(allChunks, fullContent.String(), &streamUsage, &meta, parsedReq, prov, route, startTime)
 }
 
 // handleNDJSONStream reads a newline-delimited JSON upstream response (used by
 // Ollama), forwarding raw bytes to the pipe writer while accumulating chunks
 // for telemetry.
-func (p *Proxy) handleNDJSONStream(httpResp *http.Response, pw *io.PipeWriter, parsedReq *llm.ChatRequest, prov provider.Provider, agentName string, startTime time.Time) {
+func (p *Proxy) handleNDJSONStream(httpResp *http.Response, pw *io.PipeWriter, parsedReq *llm.ChatRequest, prov provider.Provider, route agentRequestRoute, startTime time.Time) {
 	var allChunks [][]byte
 	var fullContent strings.Builder
 	var streamUsage llm.Usage
@@ -538,7 +538,7 @@ func (p *Proxy) handleNDJSONStream(httpResp *http.Response, pw *io.PipeWriter, p
 		p.logger.Error("error reading NDJSON stream", "error", err)
 	}
 
-	p.enqueueStreamedResponse(allChunks, fullContent.String(), &streamUsage, &meta, parsedReq, prov, agentName, startTime)
+	p.enqueueStreamedResponse(allChunks, fullContent.String(), &streamUsage, &meta, parsedReq, prov, route, startTime)
 }
 
 // extractContentFromJSON performs best-effort content extraction from a JSON
@@ -619,12 +619,12 @@ func jsonInt(m map[string]any, key string) int {
 
 // enqueueStreamedResponse handles post-stream telemetry: logging and
 // enqueuing the reconstructed response for async storage.
-func (p *Proxy) enqueueStreamedResponse(allChunks [][]byte, fullContent string, streamUsage *llm.Usage, meta *streamMeta, parsedReq *llm.ChatRequest, prov provider.Provider, agentName string, startTime time.Time) {
+func (p *Proxy) enqueueStreamedResponse(allChunks [][]byte, fullContent string, streamUsage *llm.Usage, meta *streamMeta, parsedReq *llm.ChatRequest, prov provider.Provider, route agentRequestRoute, startTime time.Time) {
 	if parsedReq != nil && len(allChunks) > 0 {
 		p.logger.Debug("streaming complete",
 			"content_preview", fullContent,
 			"chunk_count", len(allChunks),
-			"agent", agentName,
+			"agent", route.AgentName,
 			"duration", time.Since(startTime),
 		)
 
@@ -634,12 +634,7 @@ func (p *Proxy) enqueueStreamedResponse(allChunks [][]byte, fullContent string, 
 				finalResp.Model = parsedReq.Model
 			}
 			stampDuration(finalResp, startTime)
-			p.workerPool.Enqueue(worker.Job{
-				Provider:  prov.Name(),
-				AgentName: agentName,
-				Req:       parsedReq,
-				Resp:      finalResp,
-			})
+			p.workerPool.Enqueue(p.workerJob(prov, route, parsedReq, finalResp))
 		}
 	}
 }
@@ -697,33 +692,102 @@ func (p *Proxy) reconstructStreamedResponse(chunks [][]byte, fullContent string,
 	return nil
 }
 
-func (p *Proxy) resolveAgent(path, headerValue string) (string, string, string) {
+func (p *Proxy) workerJob(prov provider.Provider, route agentRequestRoute, req *llm.ChatRequest, resp *llm.ChatResponse) worker.Job {
+	project := route.Project
+	if project == "" {
+		project = p.config.Project
+	}
+	return worker.Job{
+		Provider:  prov.Name(),
+		AgentName: route.AgentName,
+		Project:   project,
+		Req:       req,
+		Resp:      resp,
+		Session:   route.Session,
+	}
+}
+
+func (p *Proxy) resolveAgent(path, headerValue string) agentRequestRoute {
+	route := agentRequestRoute{Path: path}
 	agent := strings.TrimSpace(headerValue)
 	if agent != "" {
-		return agent, "", path
+		route.AgentName = agent
+		return route
 	}
 
 	if !strings.HasPrefix(path, agentPathPrefix) {
-		return "", "", path
+		return route
 	}
 
 	remainder := strings.TrimPrefix(path, agentPathPrefix)
 	if remainder == "" {
-		return "", "", path
+		return route
 	}
 
 	parts := strings.SplitN(remainder, "/", 2)
 	agent = strings.TrimSpace(parts[0])
 	if agent == "" {
-		return "", "", path
+		return route
 	}
+	route.AgentName = agent
 
 	if len(parts) == 1 {
-		return agent, "", "/"
+		route.Path = "/"
+		return route
 	}
 
-	providerName, trimmedPath := resolveProviderOverride("/" + parts[1])
-	return agent, providerName, trimmedPath
+	route.Project, route.Session, route.Path = resolveAgentSessionRoute(agent, "/"+parts[1])
+	providerName, trimmedPath := resolveProviderOverride(route.Path)
+	route.ProviderName = providerName
+	route.Path = trimmedPath
+	return route
+}
+
+func resolveAgentSessionRoute(agentName, path string) (string, *sessions.IngestEnvelope, string) {
+	if !strings.HasPrefix(path, "/sessions/") {
+		return "", nil, path
+	}
+
+	remainder := strings.TrimPrefix(path, "/sessions/")
+	parts := strings.SplitN(remainder, "/", 2)
+	sessionID := strings.TrimSpace(decodePathSegment(parts[0]))
+	if sessionID == "" {
+		return "", nil, path
+	}
+
+	trimmedPath := "/"
+	if len(parts) == 2 {
+		trimmedPath = "/" + parts[1]
+	}
+
+	project := ""
+	if after, ok := strings.CutPrefix(trimmedPath, "/projects/"); ok {
+		projectRemainder := after
+		projectParts := strings.SplitN(projectRemainder, "/", 2)
+		project = strings.TrimSpace(decodePathSegment(projectParts[0]))
+		if len(projectParts) == 2 {
+			trimmedPath = "/" + projectParts[1]
+		} else {
+			trimmedPath = "/"
+		}
+	}
+
+	session := &sessions.IngestEnvelope{
+		AuthSubject:      "local",
+		HarnessID:        agentName,
+		HarnessSessionID: sessionID,
+		Cwd:              project,
+		Name:             project,
+	}
+	return project, session, trimmedPath
+}
+
+func decodePathSegment(value string) string {
+	decoded, err := url.PathUnescape(value)
+	if err != nil {
+		return value
+	}
+	return decoded
 }
 
 func (p *Proxy) resolveProvider(agentName, providerName, path string) (provider.Provider, string) {

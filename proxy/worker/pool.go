@@ -32,6 +32,7 @@ var (
 type Job struct {
 	Provider  string
 	AgentName string
+	Project   string
 	Req       *llm.ChatRequest
 	Resp      *llm.ChatResponse
 
@@ -259,7 +260,11 @@ func (p *Pool) deriveRootHash(ctx context.Context, head string) (string, error) 
 // Otherwise (legacy in-memory driver, or a turn without an envelope),
 // the original per-node Put loop runs unchanged.
 func (p *Pool) storeConversationTurn(ctx context.Context, job Job) (string, []*merkle.Node, error) {
-	chain := buildTurnChain(job, p.config.Project)
+	project := job.Project
+	if project == "" {
+		project = p.config.Project
+	}
+	chain := buildTurnChain(job, project)
 	if len(chain) == 0 {
 		return "", nil, errors.New("conversation turn produced no nodes")
 	}
