@@ -293,6 +293,10 @@
       border-color: rgba(242, 189, 92, .28);
       background: rgba(242, 189, 92, .035);
     }
+    .structured-event {
+      color: var(--muted);
+      font-size: 12px;
+    }
     .used-tools {
       border: 1px solid rgba(242, 189, 92, .26);
       border-radius: 8px;
@@ -765,11 +769,34 @@
       };
     }
 
+    function valueText(value) {
+      if (value == null) return '';
+      if (typeof value === 'string') return value;
+      if (Array.isArray(value)) {
+        return value.map(valueText).filter(Boolean).join('\n');
+      }
+      if (typeof value === 'object') {
+        if (typeof value.text === 'string') return value.text;
+        if (typeof value.content === 'string') return value.content;
+        if (typeof value.output === 'string') return value.output;
+        if (typeof value.result === 'string') return value.result;
+        return '';
+      }
+      return String(value);
+    }
+
+    function blockText(block) {
+      if (!block) return '';
+      return valueText(block.text) ||
+        valueText(block.thinking) ||
+        valueText(block.tool_output) ||
+        valueText(block.content);
+    }
+
     function contentText(blocks) {
       return (blocks || []).map(function (b) {
-        if (b.text) return b.text;
-        if (b.thinking) return b.thinking;
-        if (b.tool_output) return b.tool_output;
+        var text = blockText(b);
+        if (text) return text;
         if (b.tool_name) return 'tool: ' + b.tool_name;
         return '';
       }).filter(Boolean).join('\n');
@@ -946,7 +973,7 @@
 
     function hasBlockText(block) {
       if (!block) return false;
-      return Boolean(String(block.text || block.thinking || block.tool_output || block.content || '').trim());
+      return Boolean(blockText(block).trim());
     }
 
     function isVisibleBlock(block) {
@@ -955,13 +982,20 @@
       return hasBlockText(block) || looksLikeContext(block.text || '');
     }
 
+    function hasOpaqueObjectContent(block) {
+      return block &&
+        !hasBlockText(block) &&
+        block.content &&
+        typeof block.content === 'object';
+    }
+
     function visibleContentBlocks(blocks) {
       return (blocks || []).filter(isVisibleBlock);
     }
 
     function toolBlockTokens(block) {
       if (!block) return 0;
-      if (block.type === 'tool_result') return approxTokens(block.tool_output || block.text || block.content || '');
+      if (block.type === 'tool_result') return approxTokens(blockText(block));
       return approxTokens(block.tool_input || {});
     }
 
@@ -977,7 +1011,7 @@
     function ToolEvent(props) {
       var block = props.block || {};
       if (block.type === 'tool_result') {
-        var output = block.tool_output || block.text || block.content || '';
+        var output = blockText(block);
         var outputTokens = approxTokens(output);
         return e(ToolMessage, {
           kind: block.is_error ? 'error' : 'result',
@@ -1029,9 +1063,13 @@
       blocks = blocks || [];
       if (!blocks.length) return [e('div', { key: 'empty', className: 'message-body markdown' }, e('p', { className: 'muted' }, '(no content blocks)'))];
       var visibleBlocks = visibleContentBlocks(blocks);
-      if (!visibleBlocks.length) return [];
+      if (!visibleBlocks.length) {
+        return blocks.some(hasOpaqueObjectContent)
+          ? [e('div', { key: 'structured', className: 'structured-event' }, 'Structured event hidden')]
+          : [];
+      }
       return visibleBlocks.map(function (block, i) {
-        var text = block.text || '';
+        var text = blockText(block);
         if (looksLikeContext(text)) {
           return e('div', { key: i },
             rawDetails('Context bundle', [contextSummary(text), '~' + compact(approxTokens(text)) + ' tokens'], '```xml\n' + text + '\n```', 'context-details', 'i')
@@ -1040,10 +1078,10 @@
         if (block.type === 'thinking' || block.thinking) {
           return e('div', { key: i, className: 'event-block thought-block' },
             e('div', { className: 'block-label' }, e('span', { className: 'event-icon' }, '…'), 'Agent thought'),
-            e(Markdown, { text: block.thinking || block.text || '' })
+            e(Markdown, { text: text })
           );
         }
-        return e('div', { key: i, className: 'message-body chat-text' }, e(Markdown, { text: block.text || block.tool_output || block.content || '' }));
+        return e('div', { key: i, className: 'message-body chat-text' }, e(Markdown, { text: text }));
       });
     }
 
@@ -1084,7 +1122,7 @@
         var textBlocks = visibleContentBlocks(blocks);
         var hasText = textBlocks.length > 0;
 
-        if (!hasText && !toolBlocks.length) return;
+        if (!hasText && !toolBlocks.length && !blocks.some(hasOpaqueObjectContent)) return;
 
         if (!hasText && toolBlocks.length) {
           if (!pendingTools) {
@@ -1127,9 +1165,11 @@
       var [query, setQuery] = useState('');
       var [status, setStatus] = useState('all');
 
-      function loadSessions(nextCursor) {
-        setLoading(true);
-        setError('');
+      function loadSessions(nextCursor, quiet) {
+        if (!quiet) {
+          setLoading(true);
+          setError('');
+        }
         if (nextCursor && source === 'stems') return loadStemSessions(nextCursor);
         var path = '/v1/sessions?limit=100' + (nextCursor ? '&cursor=' + encodeURIComponent(nextCursor) : '');
         return json(path).then(function (data) {
@@ -1143,9 +1183,9 @@
           });
           setCursor(data.next_cursor || '');
         }).catch(function (err) {
-          setError(err.message);
+          if (!quiet) setError(err.message);
         }).finally(function () {
-          setLoading(false);
+          if (!quiet) setLoading(false);
         });
       }
 
@@ -1163,26 +1203,40 @@
         });
       }
 
-      useEffect(function () { loadSessions(''); }, []);
-
-      useEffect(function () {
-        if (!selectedID) return;
-        setDetailLoading(true);
-        setError('');
+      function loadSelectedDetail(quiet) {
+        if (!selectedID) return Promise.resolve();
+        if (!quiet) {
+          setDetailLoading(true);
+          setError('');
+        }
         var selected = sessions.find(function (s) { return s.id === selectedID; });
         var isStem = (selected && selected._source === 'stem') || !isUUID(selectedID);
         var path = isStem
           ? '/v1/stems/' + encodeURIComponent(selectedID)
           : '/v1/sessions/' + encodeURIComponent(selectedID) + '?stem=all';
-        json(path).then(function (data) {
+        return json(path).then(function (data) {
           setDetail(isStem ? normalizeStemDetail(selected || normalizeStemSession(data.summary || { id: selectedID }), data) : data);
           history.replaceState(null, '', '/?session=' + encodeURIComponent(selectedID));
         }).catch(function (err) {
-          setError(err.message);
+          if (!quiet) setError(err.message);
         }).finally(function () {
-          setDetailLoading(false);
+          if (!quiet) setDetailLoading(false);
         });
-      }, [selectedID, sessions]);
+      }
+
+      useEffect(function () { loadSessions(''); }, []);
+
+      useEffect(function () {
+        var id = setInterval(function () {
+          loadSessions('', true);
+          loadSelectedDetail(true);
+        }, 5000);
+        return function () { clearInterval(id); };
+      }, [selectedID, sessions, source]);
+
+      useEffect(function () {
+        loadSelectedDetail(false);
+      }, [selectedID]);
 
       var visible = useMemo(function () {
         var q = query.trim().toLowerCase();
