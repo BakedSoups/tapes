@@ -198,7 +198,7 @@ var _ = Describe("minimal web UI", func() {
 		Expect(resp.StatusCode).To(Equal(fiber.StatusNotFound))
 	})
 
-	It("serves the D3 UI from / without a frontend build", func() {
+	It("serves the React sessions UI from / without a frontend build", func() {
 		req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "/", nil)
 		Expect(err).NotTo(HaveOccurred())
 		resp, err := server.app.Test(req)
@@ -208,10 +208,10 @@ var _ = Describe("minimal web UI", func() {
 
 		raw, err := io.ReadAll(resp.Body)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(string(raw)).To(ContainSubstring("d3@7.9.0"))
-		Expect(string(raw)).To(ContainSubstring("integrity=\"sha256-8glLv2FBs1lyLE/kVOtsSw8OQswQzHr5IfwVj864ZTk=\""))
-		Expect(string(raw)).To(ContainSubstring("/v1/stems/"))
-		Expect(string(raw)).To(ContainSubstring("/v1/stems?limit="))
+		Expect(string(raw)).To(ContainSubstring("react@18/umd/react.production.min.js"))
+		Expect(string(raw)).To(ContainSubstring("react-dom@18/umd/react-dom.production.min.js"))
+		Expect(string(raw)).To(ContainSubstring("/v1/sessions?limit="))
+		Expect(string(raw)).To(ContainSubstring("/v1/sessions/"))
 		Expect(string(raw)).NotTo(ContainSubstring("/v1/sessions/summary"))
 	})
 

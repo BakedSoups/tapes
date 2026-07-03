@@ -3,293 +3,1242 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Tapes</title>
+  <title>Tapes Sessions</title>
   <style>
-    :root { color-scheme: light dark; --bg:#0f172a; --panel:#111827; --muted:#94a3b8; --line:#334155; --text:#e5e7eb; --accent:#38bdf8; --ok:#34d399; --warn:#f59e0b; }
+    :root {
+      color-scheme: dark;
+      --bg: #101114;
+      --band: #17191d;
+      --panel: #1e2127;
+      --panel-2: #252932;
+      --text: #eef0f4;
+      --muted: #9ca3af;
+      --line: #383d47;
+      --accent: #5ec8a7;
+      --accent-2: #7aa7ff;
+      --warn: #f2bd5c;
+      --bad: #f87171;
+      --good: #34d399;
+    }
     * { box-sizing: border-box; }
-    body { margin: 0; font: 14px/1.4 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); }
-    header { display:flex; align-items:center; justify-content:space-between; gap:1rem; padding:.8rem 1rem; border-bottom:1px solid var(--line); background:#020617; }
-    header h1 { margin:0; font-size:1.1rem; letter-spacing:.04em; }
-    header nav { display:flex; gap:.8rem; align-items:center; }
-    a { color: var(--accent); text-decoration:none; }
-    a:hover { text-decoration:underline; }
-    main { display:grid; grid-template-columns: 360px minmax(0,1fr); min-height: calc(100vh - 54px); }
-    aside { border-right:1px solid var(--line); background:var(--panel); overflow:auto; }
-    .pane { padding:1rem; }
-    .controls { display:grid; gap:.6rem; }
-    .row { display:flex; gap:.5rem; align-items:center; }
-    input, select, button { border:1px solid var(--line); border-radius:6px; padding:.45rem .55rem; background:#020617; color:var(--text); font:inherit; }
-    input { width:100%; min-width:0; }
-    button { cursor:pointer; }
-    button.primary { background:#075985; border-color:#0284c7; }
-    button:hover { border-color:var(--accent); }
-    .stats { display:grid; grid-template-columns:repeat(3,1fr); gap:.5rem; margin:.8rem 0; }
-    .stat { border:1px solid var(--line); border-radius:8px; padding:.55rem; background:#020617; }
-    .stat b { display:block; font-size:1.2rem; }
-    .stat span, .muted { color:var(--muted); font-size:.85rem; }
-    #sessions { display:grid; gap:.45rem; margin-top:.8rem; }
-    .session { width:100%; text-align:left; display:grid; gap:.25rem; }
-    .session.active { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent) inset; }
-    .session strong { overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
-    code { color:#bae6fd; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:.82rem; }
-    .graph-shell { min-width:0; display:grid; grid-template-rows:auto minmax(360px,1fr) auto; }
-    #graph-meta { padding:.7rem 1rem; border-bottom:1px solid var(--line); color:var(--muted); }
-    #graph-wrap { min-height:360px; overflow:hidden; }
-    svg { width:100%; height:100%; min-height:520px; display:block; background:radial-gradient(circle at top left, rgba(56,189,248,.10), transparent 34rem); }
-    .link { fill:none; stroke:#64748b; stroke-width:1.6px; }
-    .node text { fill:var(--text); paint-order:stroke; stroke:#020617; stroke-width:3px; stroke-linejoin:round; }
-    .node circle { stroke:#0f172a; stroke-width:2px; }
-    .node.selected circle { stroke:var(--accent); stroke-width:4px; }
-    .node.branch circle { stroke:var(--warn); stroke-width:4px; }
-    #details { margin:0; padding:1rem; border-top:1px solid var(--line); max-height:260px; overflow:auto; background:#020617; }
-    .empty, .error { border:1px dashed var(--line); border-radius:8px; padding:.8rem; color:var(--muted); }
-    .error { color:#fecaca; border-color:#7f1d1d; }
-    @media (max-width: 900px) { main { grid-template-columns:1fr; } aside { border-right:0; border-bottom:1px solid var(--line); } }
+    html, body, #root { min-height: 100%; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 14px/1.45 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    button, input, select {
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--panel);
+      color: var(--text);
+      font: inherit;
+    }
+    button { cursor: pointer; }
+    button:hover { border-color: var(--accent); }
+    button:disabled { cursor: not-allowed; opacity: .55; }
+    input, select { min-height: 34px; padding: 0 10px; }
+    a { color: var(--accent-2); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .app { min-height: 100vh; display: grid; grid-template-rows: auto 1fr; }
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      padding: 12px 18px;
+      border-bottom: 1px solid var(--line);
+      background: #0b0c0f;
+    }
+    .brand { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+    .brand h1 { margin: 0; font-size: 18px; line-height: 1; }
+    .brand span { color: var(--muted); white-space: nowrap; }
+    .toplinks { display: flex; gap: 14px; white-space: nowrap; }
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(360px, 42%) minmax(440px, 1fr);
+      min-height: 0;
+    }
+    .left, .right { min-width: 0; min-height: 0; }
+    .left {
+      border-right: 1px solid var(--line);
+      background: var(--band);
+      overflow: auto;
+    }
+    .right {
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      overflow: hidden;
+    }
+    .toolbar {
+      display: grid;
+      grid-template-columns: minmax(160px, 1fr) 140px 88px 88px;
+      gap: 8px;
+      padding: 14px;
+      border-bottom: 1px solid var(--line);
+      background: var(--band);
+    }
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+      padding: 14px;
+    }
+    .metric, .panel, .session, .turn {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+    }
+    .metric { padding: 12px; min-width: 0; }
+    .metric b { display: block; font-size: 20px; line-height: 1.2; }
+    .metric span, .muted { color: var(--muted); font-size: 12px; }
+    .panel { margin: 0 14px 14px; overflow: hidden; }
+    .panel-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--line);
+    }
+    .panel-head h2 { margin: 0; font-size: 13px; font-weight: 650; }
+    .activity { width: 100%; height: 170px; display: block; background: #14161a; }
+    .sessions { display: grid; gap: 8px; padding: 0 14px 14px; }
+    .session {
+      width: 100%;
+      display: grid;
+      gap: 8px;
+      padding: 11px;
+      text-align: left;
+    }
+    .session.active { border-color: var(--accent); box-shadow: inset 0 0 0 1px rgba(94, 200, 167, .7); }
+    .session-top { display: flex; justify-content: space-between; gap: 12px; align-items: start; }
+    .session-title { min-width: 0; }
+    .session-title strong {
+      display: block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 15px;
+    }
+    .session-name {
+      display: block;
+      margin-top: 2px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--text);
+      font-size: 13px;
+      font-weight: 650;
+    }
+    .session-repo-title {
+      color: var(--accent);
+      font-weight: 750;
+    }
+    .session-title code {
+      color: var(--muted);
+      font: 12px ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      min-height: 22px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 0 8px;
+      font-size: 12px;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+    .pill.completed { color: var(--good); border-color: rgba(52, 211, 153, .45); }
+    .pill.failed { color: var(--bad); border-color: rgba(248, 113, 113, .45); }
+    .session-grid {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 8px;
+    }
+    .mini { min-width: 0; }
+    .mini b { display: block; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .mini span { color: var(--muted); font-size: 11px; }
+    .detail {
+      min-height: 0;
+      overflow: auto;
+      padding: 14px;
+    }
+    .detail-empty, .error {
+      border: 1px dashed var(--line);
+      border-radius: 8px;
+      padding: 18px;
+      color: var(--muted);
+      background: var(--panel);
+    }
+    .error { color: #fecaca; border-color: rgba(248, 113, 113, .55); }
+    .detail-header {
+      display: grid;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+    .detail-title {
+      display: flex;
+      justify-content: space-between;
+      gap: 14px;
+      align-items: start;
+    }
+    .detail-title h2 {
+      margin: 0;
+      font-size: 18px;
+      line-height: 1.2;
+      overflow-wrap: anywhere;
+    }
+    .detail-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .tools {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding: 10px 0 0;
+    }
+    .turns {
+      display: grid;
+      gap: 14px;
+      position: relative;
+    }
+    .turns::before {
+      content: "";
+      position: absolute;
+      top: 8px;
+      bottom: 8px;
+      left: 19px;
+      width: 1px;
+      background: linear-gradient(180deg, transparent, var(--line), transparent);
+    }
+    .turn {
+      display: grid;
+      grid-template-columns: 40px minmax(0, 1fr);
+      gap: 12px;
+      border: 0;
+      background: transparent;
+      padding: 0;
+    }
+    .turn-avatar {
+      position: relative;
+      z-index: 1;
+      width: 38px;
+      height: 38px;
+      display: grid;
+      place-items: center;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #111318;
+      color: var(--muted);
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+    .turn.assistant .turn-avatar { color: var(--accent); border-color: rgba(94, 200, 167, .42); background: rgba(94, 200, 167, .08); }
+    .turn.user .turn-avatar { color: var(--accent-2); border-color: rgba(122, 167, 255, .42); background: rgba(122, 167, 255, .08); }
+    .turn.developer .turn-avatar, .turn.system .turn-avatar { color: var(--warn); border-color: rgba(242, 189, 92, .42); background: rgba(242, 189, 92, .08); }
+    .turn-bubble {
+      min-width: 0;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: linear-gradient(180deg, rgba(255,255,255,.024), rgba(255,255,255,0)), var(--panel);
+      overflow: hidden;
+    }
+    .turn.assistant .turn-bubble { border-color: rgba(94, 200, 167, .35); }
+    .turn.user .turn-bubble { border-color: rgba(122, 167, 255, .32); }
+    .turn.developer .turn-bubble, .turn.system .turn-bubble { border-color: rgba(242, 189, 92, .35); }
+    .turn-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 11px 12px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255,255,255,.018);
+    }
+    .turn-role {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 750;
+      text-transform: capitalize;
+    }
+    .message-stack {
+      display: grid;
+      gap: 10px;
+      padding: 12px;
+    }
+    .message-body {
+      color: #d7dbe2;
+      overflow-wrap: anywhere;
+      max-height: 360px;
+      overflow: auto;
+    }
+    .chat-text {
+      max-width: 860px;
+    }
+    .tool-message {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      border: 1px solid rgba(242, 189, 92, .34);
+      border-radius: 8px;
+      padding: 8px 10px;
+      background: rgba(242, 189, 92, .055);
+    }
+    .tool-message.result {
+      border-color: rgba(122, 167, 255, .30);
+      background: rgba(122, 167, 255, .045);
+    }
+    .tool-message.error {
+      border-color: rgba(248, 113, 113, .44);
+      background: rgba(248, 113, 113, .055);
+    }
+    .tool-message-main {
+      display: inline-flex;
+      align-items: center;
+      min-width: 0;
+      gap: 8px;
+      font-weight: 700;
+    }
+    .tool-message-main span:last-child {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .tool-message-meta {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      flex-shrink: 0;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .raw-toggle {
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 12px;
+    }
+    .raw-toggle:hover { color: var(--text); }
+    .markdown h1, .markdown h2, .markdown h3 {
+      margin: 12px 0 7px;
+      line-height: 1.2;
+      color: var(--text);
+    }
+    .markdown h1 { font-size: 18px; }
+    .markdown h2 { font-size: 16px; }
+    .markdown h3 { font-size: 14px; }
+    .markdown p { margin: 0 0 9px; }
+    .markdown ul, .markdown ol { margin: 7px 0 10px 22px; padding: 0; }
+    .markdown li { margin: 3px 0; }
+    .markdown code {
+      border: 1px solid rgba(122, 167, 255, .22);
+      border-radius: 5px;
+      padding: 1px 5px;
+      background: rgba(122, 167, 255, .10);
+      color: #cfe0ff;
+      font: 12px ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+    .markdown pre {
+      margin: 9px 0;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #0d0f13;
+      overflow: auto;
+    }
+    .markdown pre code {
+      border: 0;
+      padding: 0;
+      background: transparent;
+      color: #d7dbe2;
+      font-size: 12px;
+    }
+    .markdown blockquote {
+      margin: 9px 0;
+      padding: 7px 10px;
+      border-left: 3px solid var(--accent);
+      color: var(--muted);
+      background: rgba(94, 200, 167, .06);
+    }
+    .event-block {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px;
+      background: rgba(255,255,255,.025);
+    }
+    .thought-block {
+      border-color: rgba(167, 139, 250, .35);
+      background: rgba(167, 139, 250, .075);
+    }
+    .tool-block {
+      border-color: rgba(242, 189, 92, .36);
+      background: rgba(242, 189, 92, .065);
+    }
+    .tool-result-block {
+      border-color: rgba(122, 167, 255, .32);
+      background: rgba(122, 167, 255, .06);
+    }
+    .tool-result-block.error-result {
+      border-color: rgba(248, 113, 113, .45);
+      background: rgba(248, 113, 113, .07);
+    }
+    .block-label {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      margin-bottom: 7px;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 750;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+    }
+    .event-icon {
+      width: 18px;
+      height: 18px;
+      display: inline-grid;
+      place-items: center;
+      border-radius: 999px;
+      background: rgba(255,255,255,.08);
+      color: var(--text);
+      font-size: 11px;
+      letter-spacing: 0;
+    }
+    .tool-summary {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 4px;
+    }
+    .tool-kv {
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      border: 1px solid rgba(255,255,255,.10);
+      border-radius: 999px;
+      padding: 0 9px;
+      color: #d7dbe2;
+      background: rgba(0,0,0,.16);
+      font-size: 12px;
+    }
+    .event-details {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(255,255,255,.025);
+      overflow: hidden;
+    }
+    .event-details summary {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 9px 10px;
+      cursor: pointer;
+      list-style: none;
+    }
+    .event-details summary::-webkit-details-marker { display: none; }
+    .event-summary-left {
+      display: inline-flex;
+      align-items: center;
+      min-width: 0;
+      gap: 8px;
+      color: var(--text);
+      font-weight: 750;
+    }
+    .event-summary-right {
+      display: inline-flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 7px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .event-details-body {
+      border-top: 1px solid var(--line);
+      padding: 10px;
+      background: rgba(0,0,0,.16);
+    }
+    .context-details {
+      border-color: rgba(242, 189, 92, .36);
+    }
+    .tool-details {
+      border-color: rgba(242, 189, 92, .36);
+      background: rgba(242, 189, 92, .055);
+    }
+    .tool-result-details {
+      border-color: rgba(122, 167, 255, .32);
+      background: rgba(122, 167, 255, .045);
+    }
+    .tool-result-details.error-result {
+      border-color: rgba(248, 113, 113, .45);
+      background: rgba(248, 113, 113, .055);
+    }
+    .turn-stats {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .tool-list { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; }
+    .tool { border-color: rgba(242, 189, 92, .45); color: var(--warn); }
+    .load-more { width: calc(100% - 28px); margin: 0 14px 18px; min-height: 38px; }
+    @media (max-width: 980px) {
+      .layout { grid-template-columns: 1fr; }
+      .left { border-right: 0; border-bottom: 1px solid var(--line); max-height: none; }
+      .right { min-height: 70vh; }
+      .toolbar { grid-template-columns: 1fr 1fr; }
+      .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 560px) {
+      .topbar { align-items: start; flex-direction: column; }
+      .toolbar, .summary, .session-grid { grid-template-columns: 1fr; }
+      .detail-title { display: grid; }
+    }
   </style>
 </head>
 <body>
-  <header>
-    <h1>Tapes</h1>
-    <nav>
-      <a href="/swagger">API</a>
-      <a href="/metrics">Metrics</a>
-    </nav>
-  </header>
-  <main>
-    <aside>
-      <div class="pane controls">
-        <div class="row">
-          <input id="hash" placeholder="node/session hash" autocomplete="off" />
-          <button id="load" class="primary">Load</button>
-        </div>
-        <div class="row">
-          <select id="scope" title="Graph scope">
-            <option value="root">root + all branches</option>
-            <option value="branch">selected branch</option>
-            <option value="ancestry">ancestry only</option>
-          </select>
-          <button id="refresh">Refresh</button>
-          <button id="seed">Seed demo</button>
-        </div>
-        <div id="status" class="muted">Loading sessions...</div>
-        <div class="stats">
-          <div class="stat"><b id="stat-sessions">-</b><span>sessions</span></div>
-          <div class="stat"><b id="stat-turns">-</b><span>turns</span></div>
-          <div class="stat"><b id="stat-roots">-</b><span>roots</span></div>
-        </div>
-        <div class="muted">Recent session heads</div>
-        <div id="sessions"></div>
-      </div>
-    </aside>
-    <section class="graph-shell">
-      <div id="graph-meta">Select a session to visualize its content-addressed graph.</div>
-      <div id="graph-wrap"><svg id="dag" role="img" aria-label="session graph visualization"></svg></div>
-      <pre id="details">Click a node to inspect its hash, parent, and metadata.</pre>
-    </section>
-  </main>
-  <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js" integrity="sha256-8glLv2FBs1lyLE/kVOtsSw8OQswQzHr5IfwVj864ZTk=" crossorigin="anonymous"></script>
+  <div id="root"></div>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
   <script>
   (function () {
-    var params = new URLSearchParams(window.location.search);
-    var state = { sessions: [], currentHash: params.get('hash') || '', scope: params.get('scope') || 'root' };
-    var colors = { system:'#a78bfa', user:'#38bdf8', assistant:'#34d399', tool:'#f59e0b' };
+    var e = React.createElement;
+    var useEffect = React.useEffect;
+    var useMemo = React.useMemo;
+    var useState = React.useState;
 
-    function byID(id) { return document.getElementById(id); }
-    function esc(value) {
+    function json(path) {
+      return fetch(path).then(function (res) {
+        return res.text().then(function (text) {
+          var data = text ? JSON.parse(text) : {};
+          if (!res.ok) throw new Error(data.error || res.status + ' ' + res.statusText);
+          return data;
+        });
+      });
+    }
+
+    function money(value) {
+      var n = Number(value || 0);
+      if (n < 0.01 && n > 0) return '$' + n.toFixed(4);
+      return '$' + n.toFixed(2);
+    }
+
+    function compact(value) {
+      var n = Number(value || 0);
+      return new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 }).format(n);
+    }
+
+    function shortID(value) {
+      value = String(value || '');
+      return value.length > 12 ? value.slice(0, 12) : value;
+    }
+
+    function roleName(role) {
+      switch (role) {
+      case 'assistant':
+        return 'Agent';
+      case 'developer':
+        return 'Instructions';
+      case 'system':
+        return 'System';
+      case 'user':
+        return 'User';
+      default:
+        return role || 'Turn';
+      }
+    }
+
+    function roleInitial(role) {
+      return roleName(role).slice(0, 1);
+    }
+
+    function when(value) {
+      if (!value) return '';
+      var d = new Date(value);
+      if (Number.isNaN(d.getTime())) return '';
+      return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    }
+
+    function duration(start, end) {
+      var a = new Date(start || 0).getTime();
+      var b = new Date(end || start || 0).getTime();
+      if (!a || !b || b < a) return '0s';
+      var seconds = Math.round((b - a) / 1000);
+      if (seconds < 60) return seconds + 's';
+      var minutes = Math.round(seconds / 60);
+      if (minutes < 60) return minutes + 'm';
+      var hours = Math.round(minutes / 60);
+      return hours + 'h';
+    }
+
+    function sessionTitle(s) {
+      return s.name || s.preview || s.cwd || shortID(s.id);
+    }
+
+    function repoLabel(s) {
+      var value = String((s && (s.repo || s.project || s.cwd)) || '').trim();
+      if (!value) return 'unknown repo';
+      value = value.replace(/\/+$/, '');
+      var parts = value.split(/[\\/]/).filter(Boolean);
+      return parts.length ? parts[parts.length - 1] : value;
+    }
+
+    function sessionSubtitle(s) {
+      var parts = [repoLabel(s), s.harness_id || s.agent_name || 'agent', shortID(s.id)];
+      if (Number(s.stem_count || 0) > 1) parts.push(s.stem_count + ' stems');
+      return parts.join(' · ');
+    }
+
+    function cardTitle(s) {
+      var repo = repoLabel(s);
+      var title = sessionTitle(s);
+      if (!title || title === repo) return repo;
+      return repo + ' · ' + title;
+    }
+
+    function tokenTotal(s) {
+      return Number(s.total_input_tokens || 0) + Number(s.total_output_tokens || 0);
+    }
+
+    function normalizeProductSession(s) {
+      s._source = 'session';
+      return s;
+    }
+
+    function normalizeStemSession(s) {
+      return {
+        _source: 'stem',
+        id: s.id,
+        name: s.label,
+        preview: s.label,
+        cwd: s.project,
+        project: s.project,
+        harness_id: s.harness_id || s.agent_name || 'stem',
+        harness_session_id: s.harness_session_id,
+        started_at: s.start_time,
+        last_seen_at: s.end_time,
+        ended_at: s.end_time,
+        turn_count: s.message_count,
+        total_input_tokens: s.input_tokens,
+        total_output_tokens: s.output_tokens,
+        total_cost_usd: s.total_cost,
+        derived_status: s.status || 'unknown',
+        model: s.model,
+        tool_calls: s.tool_calls,
+        stem_count: 1,
+        stem_ids: [s.id]
+      };
+    }
+
+    function stemGroupKey(s) {
+      return [
+        s.project || '',
+        s.agent_name || s.harness_id || '',
+        s.label || '',
+        s.start_time || ''
+      ].join('\u001f');
+    }
+
+    function groupStemSessions(items) {
+      var groups = new Map();
+      items.forEach(function (item) {
+        var key = stemGroupKey({
+          project: item.project || item.cwd,
+          agent_name: item.agent_name || item.harness_id,
+          label: item.name || item.preview,
+          start_time: item.started_at
+        });
+        var current = groups.get(key);
+        if (!current) {
+          groups.set(key, Object.assign({}, item, { stem_count: 1, stem_ids: [item.id] }));
+          return;
+        }
+        current.stem_count += 1;
+        current.stem_ids.push(item.id);
+        var currentTurns = Number(current.turn_count || 0);
+        var itemTurns = Number(item.turn_count || 0);
+        var currentEnd = new Date(current.last_seen_at || 0).getTime();
+        var itemEnd = new Date(item.last_seen_at || 0).getTime();
+        if (itemTurns > currentTurns || (itemTurns === currentTurns && itemEnd > currentEnd)) {
+          var merged = Object.assign({}, item, {
+            stem_count: current.stem_count,
+            stem_ids: current.stem_ids
+          });
+          groups.set(key, merged);
+        }
+      });
+      return Array.from(groups.values()).sort(function (a, b) {
+        return new Date(b.last_seen_at || b.started_at || 0) - new Date(a.last_seen_at || a.started_at || 0);
+      });
+    }
+
+    function normalizeStemDetail(summary, data) {
+      var turns = data.turns || [];
+      var first = turns[0] || {};
+      var last = turns[turns.length - 1] || first;
+      var totals = totalsFromTurns(turns);
+      return {
+        session: {
+          _source: 'stem',
+          id: data.hash || summary.id,
+          name: summary.name || summary.preview || shortID(data.hash || summary.id),
+          preview: summary.preview,
+          cwd: summary.cwd,
+          project: summary.project,
+          harness_id: data.harness_id || summary.harness_id || 'stem',
+          harness_session_id: data.harness_session_id || summary.harness_session_id,
+          started_at: summary.started_at || first.created_at,
+          last_seen_at: summary.last_seen_at || last.created_at,
+          ended_at: summary.ended_at || last.created_at,
+          turn_count: turns.length || summary.turn_count,
+          total_input_tokens: summary.total_input_tokens || totals.input,
+          total_output_tokens: summary.total_output_tokens || totals.output,
+          total_cost_usd: summary.total_cost_usd,
+          derived_status: summary.derived_status || 'unknown',
+          model: summary.model,
+          tool_calls: summary.tool_calls || totals.toolCount
+        },
+        turns: turns,
+        stems: []
+      };
+    }
+
+    function contentText(blocks) {
+      return (blocks || []).map(function (b) {
+        if (b.text) return b.text;
+        if (b.thinking) return b.thinking;
+        if (b.tool_output) return b.tool_output;
+        if (b.tool_name) return 'tool: ' + b.tool_name;
+        return '';
+      }).filter(Boolean).join('\n');
+    }
+
+    function escapeHTML(value) {
       return String(value == null ? '' : value).replace(/[&<>"']/g, function (ch) {
-        return ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[ch];
-      });
-    }
-    function shortHash(hash) { return hash ? hash.slice(0, 12) : ''; }
-    function setStatus(message, isError) {
-      var el = byID('status');
-      el.className = isError ? 'error' : 'muted';
-      el.textContent = message;
-    }
-    async function fetchJSON(path, options) {
-      var res = await fetch(path, options || {});
-      var text = await res.text();
-      var data = text ? JSON.parse(text) : {};
-      if (!res.ok) throw new Error(data.error || (res.status + ' ' + res.statusText));
-      return data;
-    }
-    function sessionHash(item) { return item.id || item.hash || ''; }
-    function sessionLabel(item) { return item.label || item.preview || shortHash(sessionHash(item)); }
-
-    async function loadStats() {
-      var stats = await fetchJSON('/v1/stats');
-      byID('stat-sessions').textContent = stats.session_count || 0;
-      byID('stat-turns').textContent = stats.turn_count || 0;
-      byID('stat-roots').textContent = stats.root_count || 0;
-    }
-
-    async function loadSessions() {
-      var data = await fetchJSON('/v1/stems?limit=50');
-      state.sessions = data.items || [];
-      renderSessions();
-      if (!state.currentHash && state.sessions.length > 0) {
-        state.currentHash = sessionHash(state.sessions[0]);
-        byID('hash').value = state.currentHash;
-      }
-    }
-
-    function renderSessions() {
-      var list = byID('sessions');
-      if (!state.sessions.length) {
-        list.innerHTML = '<div class="empty">No sessions yet. Start the proxy or click "Seed demo" for local sample data.</div>';
-        return;
-      }
-      list.innerHTML = '';
-      state.sessions.forEach(function (item) {
-        var hash = sessionHash(item);
-        var button = document.createElement('button');
-        button.className = 'session' + (hash === state.currentHash ? ' active' : '');
-        button.innerHTML = '<strong>' + esc(sessionLabel(item)) + '</strong>' +
-          '<code>' + esc(shortHash(hash)) + '</code>' +
-          '<span class="muted">' + esc([item.project, item.model, item.status].filter(Boolean).join(' · ')) + '</span>';
-        button.addEventListener('click', function () { loadDag(hash); });
-        list.appendChild(button);
+        return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch];
       });
     }
 
-    async function loadDag(hash) {
-      hash = (hash || byID('hash').value || '').trim();
-      if (!hash) return;
-      state.currentHash = hash;
-      state.scope = byID('scope').value;
-      byID('hash').value = hash;
-      var query = '?scope=' + encodeURIComponent(state.scope) + '&max_nodes=500';
-      history.replaceState(null, '', '/?hash=' + encodeURIComponent(hash) + '&scope=' + encodeURIComponent(state.scope));
-      setStatus('Loading graph ' + shortHash(hash) + '...', false);
-      try {
-        var graph = await fetchJSON('/v1/stems/' + encodeURIComponent(hash) + '/graph' + query);
-        renderSessions();
-        renderDag(graph);
-        setStatus('Loaded ' + graph.nodes.length + ' nodes.', false);
-      } catch (err) {
-        setStatus(err.message, true);
-      }
+    function inlineMarkdown(value) {
+      return escapeHTML(value)
+        .replace(/`([^`]+)`/g, '<code>$1</code>')
+        .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*([^*]+)\*/g, '<em>$1</em>');
     }
 
-    function renderDag(data) {
-      var svg = d3.select('#dag');
-      svg.on('.zoom', null);
-      svg.selectAll('*').remove();
-      var nodes = data.nodes || [];
-      if (!nodes.length) {
-        byID('graph-meta').textContent = 'No graph nodes returned.';
-        byID('details').textContent = 'No node details.';
-        return;
+    function markdownHTML(markdown) {
+      var text = String(markdown || '').replace(/\r\n/g, '\n');
+      if (!text.trim()) return '<p class="muted">(no text content)</p>';
+
+      var html = [];
+      var lines = text.split('\n');
+      var paragraph = [];
+      var list = null;
+      var inCode = false;
+      var code = [];
+
+      function flushParagraph() {
+        if (!paragraph.length) return;
+        html.push('<p>' + inlineMarkdown(paragraph.join(' ')) + '</p>');
+        paragraph = [];
       }
 
-      byID('graph-meta').textContent = data.scope + ' graph • root ' + shortHash(data.root_hash) +
-        ' • ' + nodes.length + ' nodes • ' + (data.branch_points || []).length + ' branch points' +
-        (data.truncated ? ' • truncated' : '');
-
-      var root;
-      try {
-        root = d3.stratify().id(function (d) { return d.id; }).parentId(function (d) { return d.parent_id || null; })(nodes);
-      } catch (err) {
-        byID('details').textContent = 'D3 could not stratify the graph: ' + err.message;
-        return;
+      function flushList() {
+        if (!list) return;
+        html.push('<' + list.type + '>' + list.items.map(function (item) {
+          return '<li>' + inlineMarkdown(item) + '</li>';
+        }).join('') + '</' + list.type + '>');
+        list = null;
       }
-      root.sort(function (a, b) {
-        return d3.ascending(a.data.created_at || '', b.data.created_at || '') || d3.ascending(a.id, b.id);
+
+      lines.forEach(function (line) {
+        var trimmed = line.trim();
+        if (trimmed.indexOf('```') === 0) {
+          if (inCode) {
+            html.push('<pre><code>' + escapeHTML(code.join('\n')) + '</code></pre>');
+            code = [];
+            inCode = false;
+          } else {
+            flushParagraph();
+            flushList();
+            inCode = true;
+          }
+          return;
+        }
+        if (inCode) {
+          code.push(line);
+          return;
+        }
+        if (!trimmed) {
+          flushParagraph();
+          flushList();
+          return;
+        }
+        var heading = /^(#{1,3})\s+(.+)$/.exec(trimmed);
+        if (heading) {
+          flushParagraph();
+          flushList();
+          var level = heading[1].length;
+          html.push('<h' + level + '>' + inlineMarkdown(heading[2]) + '</h' + level + '>');
+          return;
+        }
+        if (/^>\s?/.test(trimmed)) {
+          flushParagraph();
+          flushList();
+          html.push('<blockquote>' + inlineMarkdown(trimmed.replace(/^>\s?/, '')) + '</blockquote>');
+          return;
+        }
+        var unordered = /^[-*]\s+(.+)$/.exec(trimmed);
+        var ordered = /^\d+[.)]\s+(.+)$/.exec(trimmed);
+        if (unordered || ordered) {
+          flushParagraph();
+          var type = unordered ? 'ul' : 'ol';
+          if (!list || list.type !== type) flushList();
+          if (!list) list = { type: type, items: [] };
+          list.items.push((unordered || ordered)[1]);
+          return;
+        }
+        paragraph.push(trimmed);
       });
 
-      var tree = d3.tree().nodeSize([64, 230]);
-      tree(root);
-      var laidOut = root.descendants();
-      var minX = d3.min(laidOut, function (d) { return d.x; });
-      var maxX = d3.max(laidOut, function (d) { return d.x; });
-      var maxY = d3.max(laidOut, function (d) { return d.y; });
-      var left = -90, top = minX - 90, right = maxY + 430, bottom = maxX + 90;
-      svg.attr('viewBox', [left, top, right - left, bottom - top].join(' '));
-
-      var g = svg.append('g');
-      svg.call(d3.zoom().scaleExtent([0.25, 3]).on('zoom', function (event) { g.attr('transform', event.transform); }));
-
-      g.append('g').selectAll('path')
-        .data(root.links())
-        .join('path')
-        .attr('class', 'link')
-        .attr('d', d3.linkHorizontal().x(function (d) { return d.y; }).y(function (d) { return d.x; }));
-
-      var node = g.append('g').selectAll('g')
-        .data(laidOut)
-        .join('g')
-        .attr('class', function (d) { return 'node' + (d.data.selected ? ' selected' : '') + (d.data.is_branch_point ? ' branch' : ''); })
-        .attr('transform', function (d) { return 'translate(' + d.y + ',' + d.x + ')'; })
-        .on('click', function (event, d) { event.stopPropagation(); showNode(d.data); });
-
-      node.append('circle')
-        .attr('r', function (d) { return d.data.is_branch_point ? 10 : 7; })
-        .attr('fill', function (d) { return colors[d.data.role] || '#94a3b8'; });
-
-      node.append('text')
-        .attr('x', 16)
-        .attr('dy', '-0.15em')
-        .attr('font-size', 12)
-        .text(function (d) { return (d.data.role || 'node') + ' ' + shortHash(d.data.id); });
-
-      node.append('text')
-        .attr('x', 16)
-        .attr('dy', '1.15em')
-        .attr('font-size', 11)
-        .attr('fill', '#94a3b8')
-        .text(function (d) { return (d.data.preview || '').slice(0, 54); });
-
-      node.append('title').text(function (d) { return d.data.id + '\n' + (d.data.preview || ''); });
-      var selected = nodes.find(function (n) { return n.selected; }) || nodes[0];
-      showNode(selected);
+      if (inCode) html.push('<pre><code>' + escapeHTML(code.join('\n')) + '</code></pre>');
+      flushParagraph();
+      flushList();
+      return html.join('');
     }
 
-    function showNode(node) {
-      byID('details').textContent = JSON.stringify({
-        hash: node.id,
-        parent_hash: node.parent_hash || null,
-        role: node.role,
-        type: node.type,
-        depth: node.depth,
-        children_count: node.children_count,
-        branch_point: node.is_branch_point,
-        model: node.model,
-        provider: node.provider,
-        agent_name: node.agent_name,
-        project: node.project,
-        created_at: node.created_at,
-        preview: node.preview
-      }, null, 2);
+    function Markdown(props) {
+      return e('div', { className: 'markdown', dangerouslySetInnerHTML: { __html: markdownHTML(props.text) } });
     }
 
-    async function refreshAll() {
-      try {
-        setStatus('Loading sessions...', false);
-        await Promise.all([loadStats(), loadSessions()]);
-        if (state.currentHash) await loadDag(state.currentHash);
-        else setStatus('No sessions found.', false);
-      } catch (err) {
-        setStatus(err.message, true);
+    function approxTokens(value) {
+      var text = '';
+      if (typeof value === 'string') {
+        text = value;
+      } else if (value != null) {
+        try {
+          text = JSON.stringify(value);
+        } catch (err) {
+          text = String(value);
+        }
       }
+      if (!text) return 0;
+      return Math.max(1, Math.ceil(text.length / 4));
     }
 
-    byID('scope').value = ['root', 'branch', 'ancestry'].indexOf(state.scope) >= 0 ? state.scope : 'root';
-    byID('hash').value = state.currentHash;
-    byID('load').addEventListener('click', function () { loadDag(); });
-    byID('hash').addEventListener('keydown', function (event) { if (event.key === 'Enter') loadDag(); });
-    byID('scope').addEventListener('change', function () { if (state.currentHash) loadDag(state.currentHash); });
-    byID('refresh').addEventListener('click', refreshAll);
-    byID('seed').addEventListener('click', async function () {
-      try {
-        setStatus('Seeding demo data...', false);
-        await fetchJSON('/v1/admin/seed/demo', { method:'POST' });
-        await refreshAll();
-      } catch (err) {
-        setStatus(err.message, true);
-      }
-    });
+    function toolSummary(kind, tokens, extra) {
+      var items = [e('span', { key: 'tokens', className: 'tool-kv' }, kind + ' ~' + compact(tokens) + ' tokens')];
+      if (extra) items.push(e('span', { key: 'extra', className: 'tool-kv' }, extra));
+      return e('div', { className: 'tool-summary' }, items);
+    }
 
-    refreshAll();
+    function looksLikeContext(text) {
+      text = String(text || '');
+      return /<(environment_context|skills_instructions|collaboration_mode|permissions instructions|INSTRUCTIONS)>/i.test(text) ||
+        text.indexOf('# AGENTS.md') >= 0 ||
+        text.indexOf('<cwd>') >= 0 && text.indexOf('</filesystem>') >= 0;
+    }
+
+    function contextSummary(text) {
+      var labels = [];
+      if (text.indexOf('# AGENTS.md') >= 0) labels.push('AGENTS.md');
+      if (text.indexOf('<environment_context>') >= 0) labels.push('environment');
+      if (text.indexOf('<skills_instructions>') >= 0) labels.push('skills');
+      if (text.indexOf('<permissions instructions>') >= 0) labels.push('permissions');
+      return labels.length ? labels.join(', ') : 'context';
+    }
+
+    function rawDetails(title, right, body, className, icon) {
+      return e('details', { className: 'event-details ' + (className || '') },
+        e('summary', null,
+          e('span', { className: 'event-summary-left' }, e('span', { className: 'event-icon' }, icon || '›'), title),
+          e('span', { className: 'event-summary-right' }, right)
+        ),
+        e('div', { className: 'event-details-body' }, e(Markdown, { text: body }))
+      );
+    }
+
+    function rawInlineDetails(label, body) {
+      return e('details', { className: 'raw-toggle' },
+        e('summary', null, label || 'details'),
+        e('div', { className: 'event-details-body' }, e(Markdown, { text: body }))
+      );
+    }
+
+    function ToolMessage(props) {
+      return e('div', { className: 'tool-message ' + (props.kind || '') },
+        e('div', { className: 'tool-message-main' },
+          e('span', { className: 'event-icon' }, props.icon || '↗'),
+          e('span', null, props.title)
+        ),
+        e('div', { className: 'tool-message-meta' },
+          e('span', null, props.tokens),
+          props.detail ? rawInlineDetails('raw', props.detail) : null
+        )
+      );
+    }
+
+    function renderContentBlocks(blocks) {
+      blocks = blocks || [];
+      if (!blocks.length) return [e('div', { key: 'empty', className: 'message-body markdown' }, e('p', { className: 'muted' }, '(no content blocks)'))];
+      return blocks.map(function (block, i) {
+        var text = block.text || '';
+        if (looksLikeContext(text)) {
+          return e('div', { key: i },
+            rawDetails('Context bundle', [contextSummary(text), '~' + compact(approxTokens(text)) + ' tokens'], '```xml\n' + text + '\n```', 'context-details', 'i')
+          );
+        }
+        if (block.type === 'thinking' || block.thinking) {
+          return e('div', { key: i, className: 'event-block thought-block' },
+            e('div', { className: 'block-label' }, e('span', { className: 'event-icon' }, '…'), 'Agent thought'),
+            e(Markdown, { text: block.thinking || block.text || '' })
+          );
+        }
+        if (block.type === 'tool_use' || block.type === 'server_tool_use') {
+          var toolInput = block.tool_input || {};
+          var inputTokens = approxTokens(toolInput);
+          return e(ToolMessage, {
+            key: i,
+            title: 'Called ' + (block.tool_name || 'tool'),
+            tokens: 'input ~' + compact(inputTokens) + ' tokens',
+            detail: '```json\n' + JSON.stringify(toolInput, null, 2) + '\n```',
+            icon: '↗'
+          });
+        }
+        if (block.type === 'tool_result') {
+          var output = block.tool_output || block.text || block.content || '';
+          var outputTokens = approxTokens(output);
+          return e(ToolMessage, {
+            key: i,
+            kind: block.is_error ? 'error' : 'result',
+            title: block.is_error ? 'Tool returned error' : 'Tool returned',
+            tokens: 'output ~' + compact(outputTokens) + ' tokens',
+            detail: output || '(empty tool result)',
+            icon: block.is_error ? '!' : '✓'
+          });
+        }
+        return e('div', { key: i, className: 'message-body chat-text' }, e(Markdown, { text: block.text || block.tool_output || block.content || '' }));
+      });
+    }
+
+    function turnTools(turn) {
+      return (turn.content || []).filter(function (b) {
+        return b.type === 'tool_use' || b.type === 'server_tool_use';
+      }).map(function (b) {
+        return b.tool_name || b.name || 'tool';
+      });
+    }
+
+    function totalsFromTurns(turns) {
+      return turns.reduce(function (acc, turn) {
+        var usage = turn.usage || {};
+        acc.input += Number(usage.prompt_tokens || 0);
+        acc.output += Number(usage.completion_tokens || 0);
+        turnTools(turn).forEach(function (name) {
+          acc.tools[name] = (acc.tools[name] || 0) + 1;
+          acc.toolCount += 1;
+        });
+        return acc;
+      }, { input: 0, output: 0, toolCount: 0, tools: {} });
+    }
+
+    function Dashboard() {
+      var params = new URLSearchParams(window.location.search);
+      var [sessions, setSessions] = useState([]);
+      var [cursor, setCursor] = useState('');
+      var [source, setSource] = useState('sessions');
+      var [selectedID, setSelectedID] = useState(params.get('session') || '');
+      var [detail, setDetail] = useState(null);
+      var [loading, setLoading] = useState(true);
+      var [detailLoading, setDetailLoading] = useState(false);
+      var [error, setError] = useState('');
+      var [query, setQuery] = useState('');
+      var [status, setStatus] = useState('all');
+
+      function loadSessions(nextCursor) {
+        setLoading(true);
+        setError('');
+        if (nextCursor && source === 'stems') return loadStemSessions(nextCursor);
+        var path = '/v1/sessions?limit=100' + (nextCursor ? '&cursor=' + encodeURIComponent(nextCursor) : '');
+        return json(path).then(function (data) {
+          var items = (data.items || []).map(normalizeProductSession);
+          if (!nextCursor && !items.length) return loadStemSessions('');
+          setSource('sessions');
+          setSessions(function (current) {
+            var merged = nextCursor ? current.concat(items) : items;
+            if (!selectedID && merged.length) setSelectedID(merged[0].id);
+            return merged;
+          });
+          setCursor(data.next_cursor || '');
+        }).catch(function (err) {
+          setError(err.message);
+        }).finally(function () {
+          setLoading(false);
+        });
+      }
+
+      function loadStemSessions(nextCursor) {
+        var path = '/v1/stems?limit=100' + (nextCursor ? '&cursor=' + encodeURIComponent(nextCursor) : '');
+        return json(path).then(function (data) {
+          var items = (data.items || []).map(normalizeStemSession);
+          setSource('stems');
+          setSessions(function (current) {
+            var merged = groupStemSessions(nextCursor ? current.concat(items) : items);
+            if (!selectedID && merged.length) setSelectedID(merged[0].id);
+            return merged;
+          });
+          setCursor(data.next_cursor || '');
+        });
+      }
+
+      useEffect(function () { loadSessions(''); }, []);
+
+      useEffect(function () {
+        if (!selectedID) return;
+        setDetailLoading(true);
+        setError('');
+        var selected = sessions.find(function (s) { return s.id === selectedID; });
+        var isStem = selected && selected._source === 'stem';
+        var path = isStem
+          ? '/v1/stems/' + encodeURIComponent(selectedID)
+          : '/v1/sessions/' + encodeURIComponent(selectedID) + '?stem=all';
+        json(path).then(function (data) {
+          setDetail(isStem ? normalizeStemDetail(selected, data) : data);
+          history.replaceState(null, '', '/?session=' + encodeURIComponent(selectedID));
+        }).catch(function (err) {
+          setError(err.message);
+        }).finally(function () {
+          setDetailLoading(false);
+        });
+      }, [selectedID, sessions]);
+
+      var visible = useMemo(function () {
+        var q = query.trim().toLowerCase();
+        return sessions.filter(function (s) {
+          if (status !== 'all' && s.derived_status !== status) return false;
+          if (!q) return true;
+          return [s.name, s.preview, s.cwd, s.project, repoLabel(s), s.harness_id, s.harness_session_id, s.id]
+            .filter(Boolean).join(' ').toLowerCase().indexOf(q) >= 0;
+        });
+      }, [sessions, query, status]);
+
+      var totals = useMemo(function () {
+        return visible.reduce(function (acc, s) {
+          acc.cost += Number(s.total_cost_usd || 0);
+          acc.input += Number(s.total_input_tokens || 0);
+          acc.output += Number(s.total_output_tokens || 0);
+          acc.sessions += 1;
+          acc.turns += Number(s.turn_count || 0);
+          acc.status[s.derived_status || 'unknown'] = (acc.status[s.derived_status || 'unknown'] || 0) + 1;
+          return acc;
+        }, { cost: 0, input: 0, output: 0, sessions: 0, turns: 0, status: {} });
+      }, [visible]);
+
+      return e('div', { className: 'app' },
+        e(Header),
+        e('main', { className: 'layout' },
+          e('section', { className: 'left' },
+            e(Filters, { query: query, setQuery: setQuery, status: status, setStatus: setStatus, refresh: function () { loadSessions(''); }, loading: loading }),
+            error ? e('div', { className: 'error', style: { margin: '14px' } }, error) : null,
+            e(Summary, { totals: totals }),
+            e(ActivityPanel, { sessions: visible }),
+            e(SessionList, { sessions: visible, selectedID: selectedID, setSelectedID: setSelectedID }),
+            cursor ? e('button', { className: 'load-more', onClick: function () { loadSessions(cursor); }, disabled: loading }, loading ? 'Loading...' : 'Load more') : null
+          ),
+          e('section', { className: 'right' },
+            e(DetailToolbar, { detail: detail, loading: detailLoading }),
+            e(SessionDetail, { detail: detail, loading: detailLoading })
+          )
+        )
+      );
+    }
+
+    function Header() {
+      return e('header', { className: 'topbar' },
+        e('div', { className: 'brand' }, e('h1', null, 'Tapes'), e('span', null, 'Session dashboard')),
+        e('nav', { className: 'toplinks' }, e('a', { href: '/swagger' }, 'API'), e('a', { href: '/metrics' }, 'Metrics'))
+      );
+    }
+
+    function Filters(props) {
+      return e('div', { className: 'toolbar' },
+        e('input', { value: props.query, onChange: function (ev) { props.setQuery(ev.target.value); }, placeholder: 'Search sessions' }),
+        e('select', { value: props.status, onChange: function (ev) { props.setStatus(ev.target.value); } },
+          e('option', { value: 'all' }, 'All status'),
+          e('option', { value: 'completed' }, 'Completed'),
+          e('option', { value: 'failed' }, 'Failed'),
+          e('option', { value: 'abandoned' }, 'Abandoned'),
+          e('option', { value: 'unknown' }, 'Unknown')
+        ),
+        e('button', { onClick: props.refresh, disabled: props.loading }, props.loading ? 'Loading' : 'Refresh'),
+        e('button', { onClick: function () { location.reload(); } }, 'Reset')
+      );
+    }
+
+    function Summary(props) {
+      var t = props.totals;
+      return e('div', { className: 'summary' },
+        e(Metric, { label: 'sessions', value: compact(t.sessions) }),
+        e(Metric, { label: 'tokens', value: compact(t.input + t.output), sub: compact(t.input) + ' in / ' + compact(t.output) + ' out' }),
+        e(Metric, { label: 'spend', value: money(t.cost) }),
+        e(Metric, { label: 'turns', value: compact(t.turns), sub: compact(t.status.completed || 0) + ' completed' })
+      );
+    }
+
+    function Metric(props) {
+      return e('div', { className: 'metric' }, e('b', null, props.value), e('span', null, props.sub || props.label));
+    }
+
+    function ActivityPanel(props) {
+      return e('div', { className: 'panel' },
+        e('div', { className: 'panel-head' }, e('h2', null, 'Overall activity'), e('span', { className: 'muted' }, 'cost by day')),
+        e(ActivityGraph, { sessions: props.sessions })
+      );
+    }
+
+    function ActivityGraph(props) {
+      var days = activityDays(props.sessions);
+      var maxCost = Math.max.apply(null, days.map(function (d) { return d.cost; }).concat([0.001]));
+      var maxTokens = Math.max.apply(null, days.map(function (d) { return d.tokens; }).concat([1]));
+      var w = 760, h = 170, pad = 28, step = (w - pad * 2) / Math.max(days.length - 1, 1);
+      var costPath = days.map(function (d, i) {
+        return (i === 0 ? 'M' : 'L') + (pad + i * step).toFixed(1) + ' ' + (h - pad - (d.cost / maxCost) * (h - pad * 2)).toFixed(1);
+      }).join(' ');
+      return e('svg', { className: 'activity', viewBox: '0 0 ' + w + ' ' + h, role: 'img' },
+        e('line', { x1: pad, x2: w - pad, y1: h - pad, y2: h - pad, stroke: '#383d47' }),
+        days.map(function (d, i) {
+          var x = pad + i * step;
+          var barH = (d.tokens / maxTokens) * (h - pad * 2);
+          return e('g', { key: d.key },
+            e('rect', { x: x - 5, y: h - pad - barH, width: 10, height: barH, rx: 2, fill: 'rgba(122,167,255,.35)' }),
+            e('circle', { cx: x, cy: h - pad - (d.cost / maxCost) * (h - pad * 2), r: 3.5, fill: '#5ec8a7' }),
+            i % 6 === 0 ? e('text', { x: x, y: h - 8, textAnchor: 'middle', fill: '#9ca3af', fontSize: 10 }, d.label) : null
+          );
+        }),
+        e('path', { d: costPath, fill: 'none', stroke: '#5ec8a7', strokeWidth: 2.5 }),
+        e('text', { x: pad, y: 18, fill: '#9ca3af', fontSize: 11 }, 'bars: tokens, line: spend')
+      );
+    }
+
+    function activityDays(sessions) {
+      var now = new Date();
+      var start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 29);
+      var byKey = {};
+      for (var i = 0; i < 30; i++) {
+        var d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
+        var key = d.toISOString().slice(0, 10);
+        byKey[key] = { key: key, label: String(d.getMonth() + 1) + '/' + d.getDate(), cost: 0, tokens: 0 };
+      }
+      sessions.forEach(function (s) {
+        var d = new Date(s.last_seen_at || s.started_at);
+        var key = d.toISOString().slice(0, 10);
+        if (!byKey[key]) return;
+        byKey[key].cost += Number(s.total_cost_usd || 0);
+        byKey[key].tokens += tokenTotal(s);
+      });
+      return Object.keys(byKey).sort().map(function (key) { return byKey[key]; });
+    }
+
+    function SessionList(props) {
+      if (!props.sessions.length) {
+        return e('div', { className: 'detail-empty', style: { margin: '0 14px 14px' } }, 'No sessions found.');
+      }
+      return e('div', { className: 'sessions' }, props.sessions.map(function (s) {
+        return e('button', { key: s.id, className: 'session' + (s.id === props.selectedID ? ' active' : ''), onClick: function () { props.setSelectedID(s.id); } },
+          e('div', { className: 'session-top' },
+            e('div', { className: 'session-title' },
+              e('strong', { className: 'session-repo-title' }, repoLabel(s)),
+              e('span', { className: 'session-name' }, sessionTitle(s)),
+              e('code', null, sessionSubtitle(s))
+            ),
+            e('span', { className: 'pill ' + (s.derived_status || 'unknown') }, s.derived_status || 'unknown')
+          ),
+          e('div', { className: 'session-grid' },
+            e(Mini, { label: 'spent', value: money(s.total_cost_usd) }),
+            e(Mini, { label: 'tokens', value: compact(tokenTotal(s)) }),
+            e(Mini, { label: 'turns', value: compact(s.turn_count) }),
+            e(Mini, { label: 'repo', value: repoLabel(s) }),
+            e(Mini, { label: 'when', value: when(s.last_seen_at || s.started_at) })
+          )
+        );
+      }));
+    }
+
+    function Mini(props) {
+      return e('div', { className: 'mini' }, e('b', null, props.value || '-'), e('span', null, props.label));
+    }
+
+    function DetailToolbar(props) {
+      var s = props.detail && props.detail.session;
+      return e('div', { className: 'panel-head' },
+        e('h2', null, s ? cardTitle(s) : 'Session detail'),
+        e('span', { className: 'muted' }, props.loading ? 'Loading...' : (s ? shortID(s.id) : 'Select a session'))
+      );
+    }
+
+    function SessionDetail(props) {
+      if (props.loading) return e('div', { className: 'detail' }, e('div', { className: 'detail-empty' }, 'Loading session...'));
+      if (!props.detail) return e('div', { className: 'detail' }, e('div', { className: 'detail-empty' }, 'Select a session to see turns, tools, tokens, and cost.'));
+      var s = props.detail.session;
+      var turns = props.detail.turns || [];
+      var turnTotals = totalsFromTurns(turns);
+      var tools = Object.keys(turnTotals.tools).sort(function (a, b) { return turnTotals.tools[b] - turnTotals.tools[a]; });
+      return e('div', { className: 'detail' },
+        e('div', { className: 'detail-header' },
+          e('div', { className: 'detail-title' },
+            e('h2', null, cardTitle(s)),
+            e('span', { className: 'pill ' + (s.derived_status || 'unknown') }, s.derived_status || 'unknown')
+          ),
+          e('div', { className: 'detail-meta' },
+            e('span', { className: 'pill' }, money(s.total_cost_usd)),
+            e('span', { className: 'pill' }, compact(tokenTotal(s)) + ' tokens'),
+            e('span', { className: 'pill' }, compact(s.turn_count) + ' turns'),
+            Number(s.stem_count || 0) > 1 ? e('span', { className: 'pill' }, s.stem_count + ' stems') : null,
+            e('span', { className: 'pill' }, duration(s.started_at, s.ended_at || s.last_seen_at)),
+            e('span', { className: 'pill' }, repoLabel(s)),
+            e('span', { className: 'pill' }, s.cwd || 'unknown cwd')
+          ),
+          e('div', { className: 'tools' },
+            tools.length ? tools.map(function (name) {
+              return e('span', { key: name, className: 'pill tool' }, name + ' × ' + turnTotals.tools[name]);
+            }) : e('span', { className: 'muted' }, 'No tool calls recorded for this session.')
+          )
+        ),
+        e('div', { className: 'turns' }, turns.map(function (turn) { return e(Turn, { key: turn.hash, turn: turn }); }))
+      );
+    }
+
+    function Turn(props) {
+      var t = props.turn;
+      var usage = t.usage || {};
+      return e('article', { className: 'turn ' + (t.role || 'unknown') },
+        e('div', { className: 'turn-avatar' }, roleInitial(t.role)),
+        e('div', { className: 'turn-bubble' },
+          e('div', { className: 'turn-head' },
+            e('div', null,
+              e('div', { className: 'turn-role' }, roleName(t.role)),
+              e('div', { className: 'muted' }, when(t.created_at) + ' · ' + shortID(t.hash))
+            ),
+            e('div', { className: 'turn-stats' },
+              e('span', null, compact(usage.prompt_tokens || 0) + ' in'),
+              e('span', null, compact(usage.completion_tokens || 0) + ' out'),
+              t.model ? e('span', null, t.model) : null
+            )
+          ),
+          e('div', { className: 'message-stack' },
+            renderContentBlocks(t.content)
+          )
+        )
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(e(Dashboard));
   })();
   </script>
 </body>
